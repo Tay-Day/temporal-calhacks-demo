@@ -2,15 +2,18 @@ package main
 
 import (
 	"backend/gol"
+	"context"
 	"log"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
+	"go.uber.org/zap"
 )
 
 type TemporalClientInterface interface {
 	Close() error
 	RunWorker() error
+	QueryWorkflow(workflowID string, queryType string, args ...any) (any, error)
 }
 
 type TemporalClient struct {
@@ -21,9 +24,21 @@ type TemporalClient struct {
 	done         chan any
 }
 
+type TemporalLogger struct {
+	*zap.Logger
+}
+
+func (l TemporalLogger) Debug(msg string, keyvals ...any) {}
+func (l TemporalLogger) Info(msg string, keyvals ...any)  {}
+func (l TemporalLogger) Warn(msg string, keyvals ...any)  {}
+func (l TemporalLogger) Error(msg string, keyvals ...any) {
+	l.Logger.Error(msg, zap.Any("keyvals", keyvals))
+}
+
 func NewTemporalClient(hostPort string, taskQueue string) (TemporalClientInterface, error) {
 	temporalClient, err := client.Dial(client.Options{
 		HostPort: hostPort,
+		Logger:   TemporalLogger{zap.NewNop()},
 	})
 	if err != nil {
 		return nil, err
@@ -69,4 +84,8 @@ func (c *TemporalClient) RunWorker() error {
 	}()
 
 	return nil
+}
+
+func (c *TemporalClient) QueryWorkflow(workflowID string, queryType string, args ...any) (any, error) {
+	return c.Client.QueryWorkflow(context.Background(), workflowID, "", queryType, args...)
 }

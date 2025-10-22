@@ -2,26 +2,13 @@ package gol
 
 import (
 	"context"
+	"math/rand"
 	"time"
 
 	"go.temporal.io/sdk/workflow"
 )
 
 type Board [][]bool // true means alive, false means dead
-
-var InitialBoard = Board{
-	{true, false, true, false, true, false, true, false, true},
-	{false, true, false, true, false, true, false, true, false},
-	{true, false, true, false, true, false, true, false, true},
-	{false, false, false, true, false, false, false, false, false},
-	{true, false, true, false, true, false, true, false, true},
-	{false, true, false, true, false, true, false, true, false},
-	{true, false, true, false, true, false, true, false, true},
-	{false, true, false, true, false, true, false, true, false},
-	{true, false, true, false, true, false, true, false, true},
-	{false, false, false, true, false, false, false, false, false},
-	{true, false, true, false, true, false, true, false, true},
-}
 
 type Gol struct {
 	Board   Board
@@ -73,4 +60,54 @@ func countAliveNeighbors(board Board, i, j int) int {
 		}
 	}
 	return count
+}
+
+func Splatter(board Board, row int, col int) Board {
+	radius := rand.Intn(2) + 1
+	numSplats := rand.Intn(25) + 4 // randomly affect 4–10 nearby cells
+
+	for range numSplats {
+		// Random offset around the target cell
+		dr := rand.Intn(radius*2+1) - radius
+		dc := rand.Intn(radius*2+1) - radius
+
+		r := row + dr
+		c := col + dc
+
+		if r >= 0 && r < len(board) && c >= 0 && c < len(board[0]) {
+			board[r][c] = true
+		}
+	}
+	board[row][col] = true
+	return board
+}
+
+// GetRandomBoard returns a board with random clumps of live cells
+func GetRandomBoard(length int, width int) *Board {
+	board := make(Board, length)
+	for i := range board {
+		board[i] = make([]bool, width)
+	}
+
+	numClumps := rand.Intn(8) + 4 // 4–12 clumps
+	for range numClumps {
+		centerRow := rand.Intn(length)
+		centerCol := rand.Intn(width)
+		radius := rand.Intn(3) + 1 // radius between 1–3
+
+		for dr := -radius; dr <= radius; dr++ {
+			for dc := -radius; dc <= radius; dc++ {
+				r := centerRow + dr
+				c := centerCol + dc
+				if r >= 0 && r < length && c >= 0 && c < width {
+					// small chance to skip a cell for a more organic shape
+					if rand.Float64() < 0.8 {
+						board[r][c] = true
+					}
+				}
+			}
+		}
+	}
+
+	return &board
 }

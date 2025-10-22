@@ -10,7 +10,7 @@ import (
 
 var (
 	temporalPort = "9233"
-	taskQueue    = "game-of-life"
+	taskQueue    = "gol"
 )
 
 func ensureTemporalServer() {
@@ -32,7 +32,7 @@ func ensureTemporalServer() {
 	}
 
 	// Give server time to start
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second)
 	log.Println("✅ Temporal server started.")
 }
 
@@ -49,6 +49,5 @@ func main() {
 	// Run the worker
 	temporalClient.RunWorker()
 
-	// Block the main thread
 	select {}
 }
