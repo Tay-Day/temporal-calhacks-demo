@@ -187,6 +187,26 @@ func (c *TemporalClient) StartGameOfLife(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(workflowID))
+	// Wait for state stream to be initialized or timeout
+	timeout := time.After(30 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			http.Error(w, "state stream not initialized in time", http.StatusInternalServerError)
+			return
+		case <-ticker.C:
+			gol.StateStreamsMu.RLock()
+			_, ok := gol.StateStreams[workflowID]
+			gol.StateStreamsMu.RUnlock()
+			if ok {
+				// Stream initialized, return workflow ID
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(workflowID))
+				return
+			}
+		}
+	}
 }
