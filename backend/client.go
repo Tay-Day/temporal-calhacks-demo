@@ -2,6 +2,7 @@ package main
 
 import (
 	"backend/gol"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -148,10 +149,15 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 
 		case state := <-stateStream:
-			log.Println("Sending state to client")
+
+			json, err := json.Marshal(state)
+			if err != nil {
+				log.Printf("Error marshalling state: %v", err)
+				continue
+			}
 
 			// Send event to client
-			fmt.Fprintf(w, "data: %v\n\n", state)
+			fmt.Fprintf(w, "data: %s\n\n", json)
 			flusher.Flush()
 		}
 	}
