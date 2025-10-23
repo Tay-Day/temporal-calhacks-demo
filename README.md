@@ -1,31 +1,61 @@
-# Running
+# Conversion CalHacks Demo - Temporal
 
-1. Download [go](https://go.dev/dl/)
-- Follow instructions on go website or use package manager
-- Mac
+...
+
+## Requirements
+
+- Download [go](https://go.dev/dl/). Follow the suggested instructions or use your packaege manager like below
+
+  - Mac
     ```shell
     brew install go
     ```
-- Windows
+  - Windows
     ```
     scoop install go
     ```
-2. Download [Temporal](https://learn.temporal.io/getting_started/go/dev_environment)
-- Follow instructions in temporal docs or use package manager
-- Mac
+
+- Download [Temporal](https://learn.temporal.io/getting_started/go/dev_environment). Follow the suggested instructions or use your packaege manager like below
+
+  - Mac
     ```shell
     brew install temporal
     ```
-- Windows
+  - Windows
     ```shell
     scoop install temporal
     ```
-3. In one shell start temporal on 7233 (see port config in main.go)
+
+- Optionally, download [Node](https://nodejs.org/en/download) and [pnpm](https://pnpm.io/installation) for the frontend. Follow the suggested instructions or use your packaege manager like below
+  - Mac
     ```shell
-    temporal server start-dev
+    brew install node
+    npm install -g pnpm
     ```
-4. In another shell start the backend temporal worker
+  - Windows
     ```shell
-    cd backend
-    go run .
+    scoop install nodejs
+    npm install -g pnpm
     ```
+
+## Running
+
+- Run Temporal on port 7233 (the port can be changed in [main.go](./backend/main.go)). The UI will be available at http://localhost:8233
+
+  ```shell
+  temporal server start-dev
+  ```
+
+- Run the Go backend on port 8080
+
+  ```shell
+  cd backend
+  go run .
+  ```
+
+- Optionally, run the React frontend on port 5173 (default for Vite): https://localhost:5173
+  ```shell
+  cd frontend
+  pnpm install
+  pnpm run dev
+  ```
