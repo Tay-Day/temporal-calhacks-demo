@@ -3,14 +3,26 @@ package gol
 import (
 	"context"
 	"math/rand"
+	"sync"
 	"time"
 
 	"go.temporal.io/sdk/workflow"
 )
 
+type StateChange struct {
+	Id       string        `json:"id"`
+	Step     int           `json:"step"`
+	TickTime time.Duration `json:"tickTime"`
+	Flipped  [][2]int      `json:"flipped"` // slice of [row, col] pairs
+}
+
+var StateStreams = make(map[string]chan StateChange)
+var StateStreamsMu sync.RWMutex
+
 type Board [][]bool // true means alive, false means dead
 
 type Gol struct {
+	Id       string
 	Board    Board
 	Steps    int
 	MaxStep  int
@@ -135,8 +147,49 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 	return board, nil
 }
 
-// Replacement for workflow.Sleep for very small durations (not usable across replays)
-func (a *Am) WaitDuration(ctx context.Context, duration time.Duration) (struct{}, error) {
-	time.Sleep(duration)
-	return struct{}{}, nil
+type SendStateInput struct {
+	PreviousState Gol
+	State         Gol
+}
+
+// SendState sends the current state to the state stream
+func (a *Am) SendState(ctx context.Context, input SendStateInput) (StateChange, error) {
+	time.Sleep(input.State.TickTime)
+
+	flipped := DiffFlipped(input.PreviousState.Board, input.State.Board)
+	stateChange := StateChange{
+		Id:       input.State.Id,
+		Step:     input.State.Steps,
+		TickTime: input.State.TickTime,
+		Flipped:  flipped,
+	}
+
+	StateStreamsMu.Lock()
+	defer StateStreamsMu.Unlock()
+
+	_, ok := StateStreams[input.State.Id]
+	if !ok {
+		StateStreams[input.State.Id] = make(chan StateChange)
+	}
+
+	// In a production environment a redis channel is the better option
+	select {
+	case StateStreams[input.State.Id] <- stateChange:
+	default:
+		// Drop update if no listener ready
+	}
+
+	return stateChange, nil
+}
+
+func DiffFlipped(prev, curr [][]bool) [][2]int {
+	var flipped [][2]int
+	for i := range curr {
+		for j := range curr[i] {
+			if prev[i][j] != curr[i][j] {
+				flipped = append(flipped, [2]int{i, j})
+			}
+		}
+	}
+	return flipped
 }

@@ -2,9 +2,13 @@ package main
 
 import (
 	"backend/gol"
-	"context"
+	"fmt"
 	"log"
+	"net/http"
+	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"go.uber.org/zap"
@@ -13,7 +17,9 @@ import (
 type TemporalClientInterface interface {
 	Close() error
 	RunWorker() error
-	QueryWorkflow(workflowID string, queryType string, args ...any) (any, error)
+	GetState(w http.ResponseWriter, r *http.Request)
+	SendSignal(w http.ResponseWriter, r *http.Request)
+	StartGameOfLife(w http.ResponseWriter, r *http.Request)
 }
 
 type TemporalClient struct {
@@ -86,6 +92,101 @@ func (c *TemporalClient) RunWorker() error {
 	return nil
 }
 
-func (c *TemporalClient) QueryWorkflow(workflowID string, queryType string, args ...any) (any, error) {
-	return c.Client.QueryWorkflow(context.Background(), workflowID, "", queryType, args...)
+func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
+
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 2 {
+		http.Error(w, "missing workflow ID in path", http.StatusBadRequest)
+		return
+	}
+	workflowID := parts[1]
+
+	// Subscribe to the state stream
+	gol.StateStreamsMu.RLock()
+	stateStream, ok := gol.StateStreams[workflowID]
+	gol.StateStreamsMu.RUnlock()
+	if !ok {
+		http.Error(w, fmt.Sprintf("state stream not found for ID YET: %s (maybe it's sending yet?)", workflowID), http.StatusNotFound)
+		return
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Make sure the writer can flush
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	// Send the connection established event
+	_, err := fmt.Fprintf(w, "event: connection_established\n")
+	if err != nil {
+		return
+	}
+	flusher.Flush()
+
+	log.Println("Starting state watcher")
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Context done")
+			return
+		case <-ticker.C:
+			_, err := fmt.Fprintf(w, "event: ping\n\n")
+			if err != nil {
+				return
+			}
+			flusher.Flush()
+
+		case state := <-stateStream:
+			log.Println("Sending state to client")
+
+			// Send event to client
+			fmt.Fprintf(w, "data: %v\n\n", state)
+			flusher.Flush()
+		}
+	}
+}
+
+func (c *TemporalClient) SendSignal(w http.ResponseWriter, r *http.Request) {
+
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 3 {
+		http.Error(w, "missing workflow Id or event name in path", http.StatusBadRequest)
+		return
+	}
+	workflowID := parts[1]
+	eventName := parts[2]
+
+	c.SignalWorkflow(r.Context(), workflowID, "", eventName, r.Body)
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Event sent"))
+}
+
+func (c *TemporalClient) StartGameOfLife(w http.ResponseWriter, r *http.Request) {
+
+	workflowID := uuid.New().String()
+
+	options := client.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: c.taskQueue,
+	}
+	_, err := c.ExecuteWorkflow(r.Context(), options, gol.GameOfLife, gol.GameOfLifeInput{})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(workflowID))
 }
