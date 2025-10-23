@@ -17,9 +17,10 @@ const (
 )
 
 type GameOfLifeInput struct {
-	BoardRef string
-	MaxSteps int
-	TickTime time.Duration
+	BoardRef  string
+	MaxSteps  int
+	TickTime  time.Duration
+	PrevSteps int
 }
 
 type SplatterSignal struct {
@@ -125,9 +126,10 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				return err
 			}
 			return workflow.NewContinueAsNewError(ctx, GameOfLife, GameOfLifeInput{
-				BoardRef: ref,
-				MaxSteps: input.MaxSteps,
-				TickTime: input.TickTime,
+				BoardRef:  ref,
+				MaxSteps:  input.MaxSteps,
+				TickTime:  input.TickTime,
+				PrevSteps: state.Steps,
 			})
 		}
 	}
@@ -162,10 +164,6 @@ func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 		}
 	}
 
-	if input.TickTime == 0 {
-		input.TickTime = DefaultTickTime
-	}
-
 	// Get the current workflows ID
 	workflowId := workflow.GetInfo(ctx).WorkflowExecution.ID
 
@@ -174,6 +172,7 @@ func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 		Board:    start,
 		MaxStep:  input.MaxSteps,
 		TickTime: input.TickTime,
+		Steps:    input.PrevSteps + 1,
 	}
 }
 
