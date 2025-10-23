@@ -2,10 +2,12 @@ package gol
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -16,8 +18,13 @@ type StateChange struct {
 	Flipped  [][2]int      `json:"flipped"` // slice of [row, col] pairs
 }
 
+// Mimics a redis channel
 var StateStreams = make(map[string]chan StateChange)
 var StateStreamsMu sync.RWMutex
+
+// Mimics a database table
+var Boards = make(map[string]Board)
+var BoardsMu sync.RWMutex
 
 type Board [][]bool // true means alive, false means dead
 
@@ -69,6 +76,18 @@ func countAliveNeighbors(board Board, i, j int) int {
 		}
 	}
 	return count
+}
+
+func DiffFlipped(prev, curr [][]bool) [][2]int {
+	var flipped [][2]int
+	for i := range curr {
+		for j := range curr[i] {
+			if prev[i][j] != curr[i][j] {
+				flipped = append(flipped, [2]int{i, j})
+			}
+		}
+	}
+	return flipped
 }
 
 /* -------------------------------------------------------------------------- */
@@ -148,21 +167,13 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 }
 
 type SendStateInput struct {
-	PreviousState Gol
-	State         Gol
+	State    StateChange
+	TickTime time.Duration
 }
 
 // SendState sends the current state to the state stream
 func (a *Am) SendState(ctx context.Context, input SendStateInput) (StateChange, error) {
-	time.Sleep(input.State.TickTime)
-
-	flipped := DiffFlipped(input.PreviousState.Board, input.State.Board)
-	stateChange := StateChange{
-		Id:       input.State.Id,
-		Step:     input.State.Steps,
-		TickTime: input.State.TickTime,
-		Flipped:  flipped,
-	}
+	time.Sleep(input.TickTime)
 
 	StateStreamsMu.Lock()
 	defer StateStreamsMu.Unlock()
@@ -174,22 +185,28 @@ func (a *Am) SendState(ctx context.Context, input SendStateInput) (StateChange, 
 
 	// In a production environment a redis channel is the better option
 	select {
-	case StateStreams[input.State.Id] <- stateChange:
+	case StateStreams[input.State.Id] <- input.State:
 	default:
 		// Drop update if no listener ready
 	}
 
-	return stateChange, nil
+	return input.State, nil
 }
 
-func DiffFlipped(prev, curr [][]bool) [][2]int {
-	var flipped [][2]int
-	for i := range curr {
-		for j := range curr[i] {
-			if prev[i][j] != curr[i][j] {
-				flipped = append(flipped, [2]int{i, j})
-			}
-		}
+func (a *Am) StoreBoard(ctx context.Context, board Board) (ref string, err error) {
+	BoardsMu.Lock()
+	defer BoardsMu.Unlock()
+	ref = uuid.New().String()
+	Boards[ref] = board
+	return ref, nil
+}
+
+func (a *Am) GetBoard(ctx context.Context, ref string) (Board, error) {
+	BoardsMu.RLock()
+	defer BoardsMu.RUnlock()
+	board, ok := Boards[ref]
+	if !ok {
+		return Board{}, errors.New("board not found")
 	}
-	return flipped
+	return board, nil
 }

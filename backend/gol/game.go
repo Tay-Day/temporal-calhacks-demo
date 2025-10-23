@@ -9,7 +9,7 @@ import (
 )
 
 type GameOfLifeInput struct {
-	Board    *Board
+	BoardRef string
 	MaxSteps int
 	TickTime time.Duration
 }
@@ -71,12 +71,20 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		previousState := state
 		state.Board = NextGeneration(state.Board)
 		state.Steps++
-		PrintBoard(state.Board)
+
+		// Compute the flipped cells
+		flipped := DiffFlipped(previousState.Board, state.Board)
+		stateChange := StateChange{
+			Id:       state.Id,
+			Step:     state.Steps,
+			TickTime: state.TickTime,
+			Flipped:  flipped,
+		}
 
 		// Wait for a tick (we don't use a temporal timer because its too slow)
 		_, err := DoActivity(ctx, AmInstance.SendState, SendStateInput{
-			PreviousState: previousState,
-			State:         state,
+			State:    stateChange,
+			TickTime: state.TickTime,
 		})
 		if err != nil {
 			return err
@@ -84,8 +92,12 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 
 		// Avoid large workflow histories by continuing as new every 250 steps
 		if state.Steps%250 == 0 {
+			ref, err := DoActivity(ctx, AmInstance.StoreBoard, state.Board)
+			if err != nil {
+				return err
+			}
 			return workflow.NewContinueAsNewError(ctx, GameOfLife, GameOfLifeInput{
-				Board:    &state.Board,
+				BoardRef: ref,
 				MaxSteps: input.MaxSteps,
 				TickTime: input.TickTime,
 			})
@@ -105,19 +117,25 @@ func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 		input.MaxSteps = 1000
 	}
 
-	if input.TickTime == 0 {
-		input.TickTime = 1000 * time.Millisecond
-	}
-
-	if input.Board == nil {
-		next, err := DoActivity(ctx, AmInstance.GetRandomBoard, GetRandomBoardInput{
+	var start Board
+	var err error
+	if input.BoardRef != "" {
+		start, err = DoActivity(ctx, AmInstance.GetBoard, input.BoardRef)
+		if err != nil {
+			return Gol{}
+		}
+	} else {
+		start, err = DoActivity(ctx, AmInstance.GetRandomBoard, GetRandomBoardInput{
 			Length: 512,
 			Width:  512,
 		})
 		if err != nil {
 			return Gol{}
 		}
-		input.Board = &next
+	}
+
+	if input.TickTime == 0 {
+		input.TickTime = 1000 * time.Millisecond
 	}
 
 	// Get the current workflows ID
@@ -125,13 +143,13 @@ func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 
 	return Gol{
 		Id:       workflowId,
-		Board:    *input.Board,
+		Board:    start,
 		MaxStep:  input.MaxSteps,
 		TickTime: input.TickTime,
 	}
 }
 
-// Helper to print the board to the terminal
+// Helper to print the board to the terminal (Only for debugging)
 func PrintBoard(board [][]bool) {
 	fmt.Print("\033[H\033[2J") // clear terminal
 	for _, row := range board {
