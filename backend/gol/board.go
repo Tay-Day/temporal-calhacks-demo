@@ -151,7 +151,7 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 		board[i] = make([]bool, input.Width)
 	}
 
-	for range 10 {
+	for range 50 {
 
 		// Splatter the board
 		board, err = a.RandomSplatter(ctx, RandomSplatterInput{
