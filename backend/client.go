@@ -173,7 +173,10 @@ func (c *TemporalClient) SendSignal(w http.ResponseWriter, r *http.Request) {
 	workflowID := parts[1]
 	eventName := parts[2]
 
-	c.SignalWorkflow(r.Context(), workflowID, "", eventName, r.Body)
+	var payload map[string]any
+	json.NewDecoder(r.Body).Decode(&payload)
+
+	c.SignalWorkflow(r.Context(), workflowID, "", eventName, payload)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Event sent"))

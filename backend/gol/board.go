@@ -135,28 +135,36 @@ func (a *Am) Splatter(ctx context.Context, input SplatterInput) (Board, error) {
 	rows := len(input.Board)
 	cols := len(input.Board[0])
 
+	// Collect all cells within the circular radius
+	var candidates [][2]int
 	for i := -input.Radius; i <= input.Radius; i++ {
 		for j := -input.Radius; j <= input.Radius; j++ {
-			r := input.Row + i
-			c := input.Col + j
-
-			// Check bounds
-			if r < 0 || r >= rows || c < 0 || c >= cols {
-				continue
-			}
-
-			// Check if inside circle radius
 			if i*i+j*j <= input.Radius*input.Radius {
-				// Add minor randomness: 80% chance to fill
-				if rand.Float64() < 0.8 {
-					input.Board[r][c] = true
+				r := input.Row + i
+				c := input.Col + j
+				if r >= 0 && r < rows && c >= 0 && c < cols {
+					candidates = append(candidates, [2]int{r, c})
 				}
 			}
 		}
 	}
 
+	// Randomly shuffle candidates
+	rand.Shuffle(len(candidates), func(i, j int) {
+		candidates[i], candidates[j] = candidates[j], candidates[i]
+	})
+
+	// Choose a random number of cells to fill
+	numToFill := rand.Intn(len(candidates)) + 1
+
+	for i := 0; i < numToFill; i++ {
+		r, c := candidates[i][0], candidates[i][1]
+		input.Board[r][c] = true
+	}
+
 	// Ensure the center cell is always alive
 	input.Board[input.Row][input.Col] = true
+
 	return input.Board, nil
 }
 

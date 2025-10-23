@@ -3,9 +3,18 @@ package gol
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"go.temporal.io/sdk/workflow"
+)
+
+const (
+	DefaultMaxSteps      = 1000
+	DefaultTickTime      = 1000 * time.Millisecond
+	DefaultBoardLength   = 40
+	DefaultBoardWidth    = 40
+	DefaultStoreInterval = 150
 )
 
 type GameOfLifeInput struct {
@@ -15,13 +24,13 @@ type GameOfLifeInput struct {
 }
 
 type SplatterSignal struct {
-	X    int
-	Y    int
-	Size int
+	X    int `json:"x"`
+	Y    int `json:"y"`
+	Size int `json:"size"`
 }
 
 type UpdateTickTimeSignal struct {
-	TickTime int
+	TickTime int `json:"tickTime"`
 }
 
 // Main workflow function for the Game of Life
@@ -45,6 +54,8 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			if request.Size == 0 {
 				request.Size = 5
 			}
+
+			log.Println("Splattering board at", request.X, request.Y, request.Size)
 
 			board, err := DoActivity(ctx, AmInstance.Splatter, SplatterInput{
 				Board:  state.Board,
@@ -93,9 +104,10 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		if err != nil {
 			return err
 		}
+		PrintBoard(state.Board)
 
 		// Avoid large workflow histories by continuing as new every 250 steps
-		if state.Steps%150 == 0 {
+		if state.Steps%DefaultStoreInterval == 0 {
 			ref, err := DoActivity(ctx, AmInstance.StoreBoard, state.Board)
 			if err != nil {
 				return err
@@ -118,7 +130,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 // Init enforces defaults for the game of life
 func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 	if input.MaxSteps == 0 {
-		input.MaxSteps = 1000
+		input.MaxSteps = DefaultMaxSteps
 	}
 
 	var start Board
@@ -130,8 +142,8 @@ func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 		}
 	} else {
 		start, err = DoActivity(ctx, AmInstance.GetRandomBoard, GetRandomBoardInput{
-			Length: 512,
-			Width:  512,
+			Length: DefaultBoardLength,
+			Width:  DefaultBoardWidth,
 		})
 		if err != nil {
 			return Gol{}
@@ -139,7 +151,7 @@ func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 	}
 
 	if input.TickTime == 0 {
-		input.TickTime = 1000 * time.Millisecond
+		input.TickTime = DefaultTickTime
 	}
 
 	// Get the current workflows ID
