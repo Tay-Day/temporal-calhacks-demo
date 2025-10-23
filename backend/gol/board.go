@@ -189,7 +189,7 @@ type SendStateInput struct {
 }
 
 // SendState sends the current state to the state stream
-func (a *Am) SendState(input SendStateInput) (StateChange, error) {
+func (a *Am) SendState(ctx context.Context, input SendStateInput) (StateChange, error) {
 	time.Sleep(input.TickTime)
 
 	StateStreamsMu.Lock()

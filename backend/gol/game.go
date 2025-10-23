@@ -10,7 +10,7 @@ import (
 
 const (
 	DefaultMaxSteps      = 1000
-	DefaultTickTime      = 250 * time.Millisecond
+	DefaultTickTime      = 500 * time.Millisecond
 	DefaultBoardLength   = 512
 	DefaultBoardWidth    = 512
 	DefaultStoreInterval = 150
@@ -71,7 +71,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			}
 
 			// Send the state to the channel
-			AmInstance.SendState(SendStateInput{
+			_, err = DoActivity(ctx, AmInstance.SendState, SendStateInput{
 				State:    stateChange,
 				TickTime: state.TickTime,
 			})
@@ -109,10 +109,13 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		}
 
 		// Send the state to the channel
-		AmInstance.SendState(SendStateInput{
+		_, err := DoActivity(ctx, AmInstance.SendState, SendStateInput{
 			State:    stateChange,
 			TickTime: state.TickTime,
 		})
+		if err != nil {
+			return err
+		}
 
 		// Avoid large workflow histories by continuing as new every 250 steps
 		if state.Steps%DefaultStoreInterval == 0 {
