@@ -157,7 +157,7 @@ func (a *Am) Splatter(ctx context.Context, input SplatterInput) (Board, error) {
 	// Choose a random number of cells to fill
 	numToFill := rand.Intn(len(candidates)) + 1
 
-	for i := 0; i < numToFill; i++ {
+	for i := range numToFill {
 		r, c := candidates[i][0], candidates[i][1]
 		input.Board[r][c] = true
 	}
@@ -180,12 +180,12 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 		board[i] = make([]bool, input.Width)
 	}
 
-	for range 10 {
+	for range 5 {
 
 		// Splatter the board
 		board, err = a.RandomSplatter(ctx, RandomSplatterInput{
 			Board:  board,
-			Radius: rand.Intn(len(board)/2) + 1,
+			Radius: rand.Intn(len(board)/10) + 1,
 		})
 		if err != nil {
 			return nil, err
