@@ -6,37 +6,35 @@
 
 - Download [go](https://go.dev/dl/). Follow the suggested instructions or use your packaege manager like below
 
-  - Mac
-    ```shell
-    brew install go
-    ```
-  - Windows
-    ```
-    scoop install go
-    ```
+  ```shell
+  # macOS
+  brew install go
+
+  # Windows
+  scoop install go
+  ```
 
 - Download [Temporal](https://learn.temporal.io/getting_started/go/dev_environment). Follow the suggested instructions or use your packaege manager like below
 
-  - Mac
-    ```shell
-    brew install temporal
-    ```
-  - Windows
-    ```shell
-    scoop install temporal
-    ```
+  ```shell
+  # macOS
+  brew install temporal
+
+  # Windows
+  scoop install temporal
+  ```
 
 - Optionally, download [Node](https://nodejs.org/en/download) and [pnpm](https://pnpm.io/installation) for the frontend. Follow the suggested instructions or use your packaege manager like below
-  - Mac
-    ```shell
-    brew install node
-    npm install -g pnpm
-    ```
-  - Windows
-    ```shell
-    scoop install nodejs
-    npm install -g pnpm
-    ```
+
+  ```shell
+  # macOS
+  brew install node
+  npm install -g pnpm
+
+  # Windows
+  scoop install nodejs
+  npm install -g pnpm
+  ```
 
 ## Running
 
