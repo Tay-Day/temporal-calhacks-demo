@@ -11,20 +11,17 @@ import (
 type Board [][]bool // true means alive, false means dead
 
 type Gol struct {
-	Board   Board
-	Steps   int
-	MaxStep int
+	Board    Board
+	Steps    int
+	MaxStep  int
+	TickTime time.Duration
 }
 
-type Am struct{}
+/* -------------------------------------------------------------------------- */
+/*                                Deterministic                               */
+/* -------------------------------------------------------------------------- */
 
-var AmInstance = &Am{}
-
-var ao = workflow.ActivityOptions{
-	StartToCloseTimeout: 10 * time.Second,
-}
-
-func (a *Am) NextGeneration(ctx context.Context, board Board) (Board, error) {
+func NextGeneration(board Board) Board {
 	rows := len(board)
 	cols := len(board[0])
 	next := make(Board, rows)
@@ -39,7 +36,7 @@ func (a *Am) NextGeneration(ctx context.Context, board Board) (Board, error) {
 			}
 		}
 	}
-	return next, nil
+	return next
 }
 
 func countAliveNeighbors(board Board, i, j int) int {
@@ -62,11 +59,40 @@ func countAliveNeighbors(board Board, i, j int) int {
 	return count
 }
 
-func Splatter(board Board, row int, col int) Board {
-	radius := rand.Intn(2) + 1
-	numSplats := rand.Intn(25) + 4 // randomly affect 4–10 nearby cells
+/* -------------------------------------------------------------------------- */
+/*                                 Activities                                 */
+/* -------------------------------------------------------------------------- */
 
-	for range numSplats {
+type Am struct{}
+
+var AmInstance = &Am{}
+
+var ao = workflow.ActivityOptions{
+	StartToCloseTimeout: 10 * time.Second,
+}
+
+type RandomSplatterInput struct {
+	Board  Board
+	Radius int
+}
+
+// RandomSplatter randomly splatts a board with a given splatter radius and number of splats
+func (a *Am) RandomSplatter(ctx context.Context, input RandomSplatterInput) (Board, error) {
+
+	// Pick a random cell to splatter
+	row := rand.Intn(len(input.Board))
+	col := rand.Intn(len(input.Board[0]))
+
+	numCellsToSet := rand.Intn(input.Radius*4) + 4
+
+	return a.splatter(input.Board, row, col, input.Radius, numCellsToSet)
+}
+
+// splatter affects a single cell and its surrounding cells
+// randomly chooses spat zones and then randomly sets cells to true in the splat zone
+func (a *Am) splatter(b Board, row, col int, radius int, numCellsToSet int) (Board, error) {
+
+	for range numCellsToSet {
 		// Random offset around the target cell
 		dr := rand.Intn(radius*2+1) - radius
 		dc := rand.Intn(radius*2+1) - radius
@@ -74,40 +100,43 @@ func Splatter(board Board, row int, col int) Board {
 		r := row + dr
 		c := col + dc
 
-		if r >= 0 && r < len(board) && c >= 0 && c < len(board[0]) {
-			board[r][c] = true
+		if r >= 0 && r < len(b) && c >= 0 && c < len(b[0]) {
+			b[r][c] = true
 		}
 	}
-	board[row][col] = true
-	return board
+	b[row][col] = true
+	return b, nil
+}
+
+type GetRandomBoardInput struct {
+	Length int
+	Width  int
 }
 
 // GetRandomBoard returns a board with random clumps of live cells
-func GetRandomBoard(length int, width int) *Board {
-	board := make(Board, length)
+func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (board Board, err error) {
+	board = make(Board, input.Length)
 	for i := range board {
-		board[i] = make([]bool, width)
+		board[i] = make([]bool, input.Width)
 	}
 
-	numClumps := rand.Intn(8) + 4 // 4–12 clumps
-	for range numClumps {
-		centerRow := rand.Intn(length)
-		centerCol := rand.Intn(width)
-		radius := rand.Intn(3) + 1 // radius between 1–3
+	for range 10 {
 
-		for dr := -radius; dr <= radius; dr++ {
-			for dc := -radius; dc <= radius; dc++ {
-				r := centerRow + dr
-				c := centerCol + dc
-				if r >= 0 && r < length && c >= 0 && c < width {
-					// small chance to skip a cell for a more organic shape
-					if rand.Float64() < 0.8 {
-						board[r][c] = true
-					}
-				}
-			}
+		// Splatter the board
+		board, err = a.RandomSplatter(ctx, RandomSplatterInput{
+			Board:  board,
+			Radius: rand.Intn(len(board)/2) + 1,
+		})
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	return &board
+	return board, nil
+}
+
+// Replacement for workflow.Sleep for very small durations (not usable across replays)
+func (a *Am) WaitDuration(ctx context.Context, duration time.Duration) (struct{}, error) {
+	time.Sleep(duration)
+	return struct{}{}, nil
 }

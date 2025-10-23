@@ -1,8 +1,8 @@
 package gol
 
 import (
+	"context"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"go.temporal.io/sdk/workflow"
@@ -14,26 +14,15 @@ type GameOfLifeInput struct {
 	TickTime time.Duration
 }
 
-type SplatterRequest struct {
+type SplatterSignal struct {
+	Size int
 }
 
-func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (Board, error) {
-	if input.MaxSteps == 0 {
-		input.MaxSteps = 1000
-	}
+// Main workflow function for the Game of Life
+func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 
-	if input.Board == nil {
-		input.Board = GetRandomBoard(40, 40)
-	}
-
-	if input.TickTime == 0 {
-		input.TickTime = 500 * time.Millisecond
-	}
-
-	state := Gol{
-		Board:   *input.Board,
-		MaxStep: input.MaxSteps,
-	}
+	// Initialize the game of life
+	state := Init(ctx, input)
 
 	// Allow queries to inspect board
 	workflow.SetQueryHandler(ctx, "currentBoard", func() (Board, error) {
@@ -42,12 +31,24 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (Board, error) {
 
 	// Allow updates to a single cell
 	splatterChannel := workflow.GetSignalChannel(ctx, "splatter")
-
 	workflow.Go(ctx, func(ctx workflow.Context) {
 		for {
-			var request SplatterRequest
+			var request SplatterSignal
 			splatterChannel.Receive(ctx, &request)
-			state.Board = Splatter(state.Board, rand.Intn(len(state.Board)), rand.Intn(len(state.Board[0])))
+
+			if request.Size == 0 {
+				request.Size = 5
+			}
+
+			board, err := DoActivity(ctx, AmInstance.RandomSplatter, RandomSplatterInput{
+				Board:  state.Board,
+				Radius: request.Size,
+			})
+			if err != nil {
+				continue
+			}
+			state.Board = board
+			PrintBoard(state.Board)
 		}
 	})
 
@@ -56,36 +57,61 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (Board, error) {
 		for {
 			var request int
 			updateTickTimeChannel.Receive(ctx, &request)
-			input.TickTime = time.Duration(request) * time.Millisecond
+			state.TickTime = time.Duration(request) * time.Millisecond
 		}
 	})
-
-	ctx = workflow.WithActivityOptions(ctx, ao)
 
 	// Steps through the generations
 	for state.Steps < state.MaxStep {
 
 		// Compute next generation
-		var next Board
-		err := workflow.ExecuteActivity(ctx, AmInstance.NextGeneration, state.Board).Get(ctx, &next)
-		if err != nil {
-			return nil, err
-		}
-
-		state.Board = next
+		state.Board = NextGeneration(state.Board)
 		state.Steps++
 
 		// Wait for a tick (temporal timer)
-		workflow.Sleep(ctx, input.TickTime)
+		DoActivity(ctx, AmInstance.WaitDuration, time.Duration(state.TickTime))
 
-		printBoard(state.Board)
+		PrintBoard(state.Board)
 
 	}
 
-	return state.Board, nil
+	return nil
 }
 
-func printBoard(board [][]bool) {
+/* -------------------------------------------------------------------------- */
+/*                                   Helpers                                  */
+/* -------------------------------------------------------------------------- */
+
+// Init enforces defaults for the game of life
+func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
+	if input.MaxSteps == 0 {
+		input.MaxSteps = 1000
+	}
+
+	if input.TickTime == 0 {
+		input.TickTime = 1000 * time.Millisecond
+	}
+
+	if input.Board == nil {
+		next, err := DoActivity(ctx, AmInstance.GetRandomBoard, GetRandomBoardInput{
+			Length: 40,
+			Width:  40,
+		})
+		if err != nil {
+			return Gol{}
+		}
+		input.Board = &next
+	}
+
+	return Gol{
+		Board:    *input.Board,
+		MaxStep:  input.MaxSteps,
+		TickTime: input.TickTime,
+	}
+}
+
+// Helper to print the board to the terminal
+func PrintBoard(board [][]bool) {
 	fmt.Print("\033[H\033[2J") // clear terminal
 	for _, row := range board {
 		for _, cell := range row {
@@ -97,4 +123,15 @@ func printBoard(board [][]bool) {
 		}
 		fmt.Println()
 	}
+}
+
+// Helper to add the activity options to the context and execute the activity
+func DoActivity[Input any, Output any](ctx workflow.Context, activity func(context.Context, Input) (Output, error), input Input) (Output, error) {
+	activityCtx := workflow.WithActivityOptions(ctx, ao)
+	var result Output
+	err := workflow.ExecuteActivity(activityCtx, activity, input).Get(activityCtx, &result)
+	if err != nil {
+		return result, err
+	}
+	return result, nil
 }
