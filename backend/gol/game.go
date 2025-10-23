@@ -15,6 +15,8 @@ type GameOfLifeInput struct {
 }
 
 type SplatterSignal struct {
+	X    int
+	Y    int
 	Size int
 }
 
@@ -44,9 +46,12 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				request.Size = 5
 			}
 
-			board, err := DoActivity(ctx, AmInstance.RandomSplatter, RandomSplatterInput{
-				Board:  state.Board,
-				Radius: request.Size,
+			board, err := DoActivity(ctx, AmInstance.Splatter, SplatterInput{
+				Board:         state.Board,
+				Row:           request.X,
+				Col:           request.Y,
+				Radius:        request.Size,
+				NumCellsToSet: request.Size * request.Size / 2,
 			})
 			if err != nil {
 				continue
@@ -91,7 +96,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		}
 
 		// Avoid large workflow histories by continuing as new every 250 steps
-		if state.Steps%250 == 0 {
+		if state.Steps%150 == 0 {
 			ref, err := DoActivity(ctx, AmInstance.StoreBoard, state.Board)
 			if err != nil {
 				return err

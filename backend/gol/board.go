@@ -116,27 +116,41 @@ func (a *Am) RandomSplatter(ctx context.Context, input RandomSplatterInput) (Boa
 
 	numCellsToSet := rand.Intn(input.Radius*4) + 4
 
-	return a.splatter(input.Board, row, col, input.Radius, numCellsToSet)
+	return a.Splatter(ctx, SplatterInput{
+		Board:         input.Board,
+		Row:           row,
+		Col:           col,
+		Radius:        input.Radius,
+		NumCellsToSet: numCellsToSet,
+	})
 }
 
 // splatter affects a single cell and its surrounding cells
 // randomly chooses spat zones and then randomly sets cells to true in the splat zone
-func (a *Am) splatter(b Board, row, col int, radius int, numCellsToSet int) (Board, error) {
+type SplatterInput struct {
+	Board         Board
+	Row           int
+	Col           int
+	Radius        int
+	NumCellsToSet int
+}
 
-	for range numCellsToSet {
+func (a *Am) Splatter(ctx context.Context, input SplatterInput) (Board, error) {
+
+	for range input.NumCellsToSet {
 		// Random offset around the target cell
-		dr := rand.Intn(radius*2+1) - radius
-		dc := rand.Intn(radius*2+1) - radius
+		dr := rand.Intn(input.Radius*2+1) - input.Radius
+		dc := rand.Intn(input.Radius*2+1) - input.Radius
 
-		r := row + dr
-		c := col + dc
+		r := input.Row + dr
+		c := input.Col + dc
 
-		if r >= 0 && r < len(b) && c >= 0 && c < len(b[0]) {
-			b[r][c] = true
+		if r >= 0 && r < len(input.Board) && c >= 0 && c < len(input.Board[0]) {
+			input.Board[r][c] = true
 		}
 	}
-	b[row][col] = true
-	return b, nil
+	input.Board[input.Row][input.Col] = true
+	return input.Board, nil
 }
 
 type GetRandomBoardInput struct {
