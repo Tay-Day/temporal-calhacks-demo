@@ -93,6 +93,7 @@ func (c *TemporalClient) RunWorker() error {
 	return nil
 }
 
+// GetState subscribes to the state stream and sends the state to the client via SSE
 func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -107,7 +108,7 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 	stateStream, ok := gol.StateStreams[workflowID]
 	gol.StateStreamsMu.RUnlock()
 	if !ok {
-		http.Error(w, fmt.Sprintf("state stream not found for ID YET: %s (maybe it's sending yet?)", workflowID), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("state stream not found for ID: %s", workflowID), http.StatusNotFound)
 		return
 	}
 
@@ -135,7 +136,6 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
-	log.Println("Starting state watcher")
 	for {
 		select {
 		case <-ctx.Done():
@@ -163,6 +163,8 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// SendSignal sends a signal to the workflow
+// Url is like /signal/workflowID/signalName
 func (c *TemporalClient) SendSignal(w http.ResponseWriter, r *http.Request) {
 
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -171,20 +173,21 @@ func (c *TemporalClient) SendSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	workflowID := parts[1]
-	eventName := parts[2]
+	signalName := parts[2]
 
 	var payload map[string]any
 	json.NewDecoder(r.Body).Decode(&payload)
 
-	c.SignalWorkflow(r.Context(), workflowID, "", eventName, payload)
+	c.SignalWorkflow(r.Context(), workflowID, "", signalName, payload)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Event sent"))
 }
 
+// StartGameOfLife starts a new game of life workflow
 func (c *TemporalClient) StartGameOfLife(w http.ResponseWriter, r *http.Request) {
 
-	workflowID := "gol" // deterministic to delete other games
+	workflowID := "gol" // Deterministic to delete other games (one at a time)
 
 	options := client.StartWorkflowOptions{
 		ID:                    workflowID,
@@ -197,7 +200,7 @@ func (c *TemporalClient) StartGameOfLife(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Wait for state stream to be initialized or timeout
+	// Wait for state stream to be initialized so we can immediately subscribe to it
 	timeout := time.After(30 * time.Second)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()

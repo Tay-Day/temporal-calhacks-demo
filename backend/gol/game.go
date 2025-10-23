@@ -23,11 +23,15 @@ type GameOfLifeInput struct {
 	PrevSteps int
 }
 
+const SplatterSignalName = "splatter"
+
 type SplatterSignal struct {
 	X    int `json:"x"`
 	Y    int `json:"y"`
 	Size int `json:"size"`
 }
+
+const UpdateTickTimeSignalName = "updateTickTime"
 
 type UpdateTickTimeSignal struct {
 	TickTime int `json:"tickTime"`
@@ -40,7 +44,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	state := Init(ctx, input)
 
 	// Allow updates to a single cell
-	splatterChannel := workflow.GetSignalChannel(ctx, "splatter")
+	splatterChannel := workflow.GetSignalChannel(ctx, SplatterSignalName)
 	workflow.Go(ctx, func(ctx workflow.Context) {
 		for {
 			var request SplatterSignal
@@ -50,7 +54,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				request.Size = 5
 			}
 
-			previousState := state.Board
+			previousState := state
 			board, err := DoActivity(ctx, AmInstance.Splatter, SplatterInput{
 				Board:  state.Board,
 				Row:    request.X,
@@ -62,34 +66,19 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			}
 			state.Board = board
 
-			// Compute the flipped cells to avoid activity memory limits
-			flipped := DiffFlipped(previousState, state.Board)
-			stateChange := StateChange{
-				Id:       state.Id,
-				Step:     state.Steps,
-				TickTime: state.TickTime,
-				Flipped:  flipped,
-			}
-
-			// Send the state to the channel
-			_, err = DoActivity(ctx, AmInstance.SendState, SendStateInput{
-				State:    stateChange,
-				TickTime: state.TickTime,
-			})
+			err = SendStateUpdate(ctx, previousState, state)
 			if err != nil {
 				continue
 			}
-			state.Steps++
 		}
 	})
 
-	updateTickTimeChannel := workflow.GetSignalChannel(ctx, "updateTickTime")
+	updateTickTimeChannel := workflow.GetSignalChannel(ctx, UpdateTickTimeSignalName)
 	workflow.Go(ctx, func(ctx workflow.Context) {
 		for {
 			var request UpdateTickTimeSignal
 			updateTickTimeChannel.Receive(ctx, &request)
 			state.TickTime = time.Duration(request.TickTime) * time.Millisecond
-
 		}
 	})
 
@@ -99,22 +88,8 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		// Compute next generation
 		previousState := state
 		state.Board = NextGeneration(state.Board)
-		state.Steps++
 
-		// Compute the flipped cells to avoid activity memory limits
-		flipped := DiffFlipped(previousState.Board, state.Board)
-		stateChange := StateChange{
-			Id:       state.Id,
-			Step:     state.Steps,
-			TickTime: state.TickTime,
-			Flipped:  flipped,
-		}
-
-		// Send the state to the channel
-		_, err := DoActivity(ctx, AmInstance.SendState, SendStateInput{
-			State:    stateChange,
-			TickTime: state.TickTime,
-		})
+		err = SendStateUpdate(ctx, previousState, state)
 		if err != nil {
 			return err
 		}
@@ -140,6 +115,30 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 /* -------------------------------------------------------------------------- */
 /*                                   Helpers                                  */
 /* -------------------------------------------------------------------------- */
+
+// SendStateUpdate sends the difference between the previous and current state to the state stream
+func SendStateUpdate(ctx workflow.Context, prevState, currState Gol) error {
+
+	// Compute the flipped cells to avoid activity memory limits
+	flipped := DiffFlipped(prevState.Board, currState.Board)
+	stateChange := StateChange{
+		Id:       currState.Id,
+		Step:     currState.Steps,
+		TickTime: currState.TickTime,
+		Flipped:  flipped,
+	}
+	currState.Steps++
+
+	// Send the state to the channel
+	_, err := DoActivity(ctx, AmInstance.SendState, SendStateInput{
+		State:    stateChange,
+		TickTime: currState.TickTime,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 // Init enforces defaults for the game of life
 func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
@@ -176,15 +175,15 @@ func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 	}
 }
 
-// Helper to print the board to the terminal (Only for debugging)
+// Helper to print the board to the terminal (Only for debugging at LOW board sizes)
 func PrintBoard(board [][]bool) {
 	fmt.Print("\033[H\033[2J") // clear terminal
 	for _, row := range board {
 		for _, cell := range row {
 			if cell {
-				fmt.Print("⬜") // alive
+				fmt.Print("⬜")
 			} else {
-				fmt.Print("  ") // dead (two spaces to keep alignment)
+				fmt.Print("  ")
 			}
 		}
 		fmt.Println()

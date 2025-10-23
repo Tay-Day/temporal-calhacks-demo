@@ -18,14 +18,6 @@ type StateChange struct {
 	Flipped  [][2]int      `json:"flipped"` // slice of [row, col] pairs
 }
 
-// Mimics a redis channel
-var StateStreams = make(map[string]chan StateChange)
-var StateStreamsMu sync.RWMutex
-
-// Mimics a database table
-var Boards = make(map[string]Board)
-var BoardsMu sync.RWMutex
-
 type Board [][]bool // true means alive, false means dead
 
 type Gol struct {
@@ -173,7 +165,7 @@ type GetRandomBoardInput struct {
 	Width  int
 }
 
-// GetRandomBoard returns a board with random clumps of live cells
+// GetRandomBoard returns a board with a random splatter in the middle
 func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (board Board, err error) {
 	board = make(Board, input.Length)
 	for i := range board {
@@ -190,6 +182,16 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 
 	return board, nil
 }
+
+/* ------------------------------ IO Activites ------------------------------ */
+
+// Mimics a redis channel
+var StateStreams = make(map[string]chan StateChange)
+var StateStreamsMu sync.RWMutex
+
+// Mimics a database table useful across workflows
+var Boards = make(map[string]Board)
+var BoardsMu sync.RWMutex
 
 type SendStateInput struct {
 	State    StateChange
@@ -208,7 +210,6 @@ func (a *Am) SendState(ctx context.Context, input SendStateInput) (StateChange, 
 		StateStreams[input.State.Id] = make(chan StateChange)
 	}
 
-	// In a production environment a redis channel is the better option
 	select {
 	case StateStreams[input.State.Id] <- input.State:
 	default:
