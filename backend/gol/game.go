@@ -68,7 +68,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		state.Board = NextGeneration(state.Board)
 		state.Steps++
 
-		// Wait for a tick (temporal timer)
+		// Wait for a tick (we don't use a temporal timer because its too slow)
 		DoActivity(ctx, AmInstance.WaitDuration, time.Duration(state.TickTime))
 
 		PrintBoard(state.Board)
