@@ -78,6 +78,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			if err != nil {
 				continue
 			}
+			state.Steps++
 		}
 	})
 
