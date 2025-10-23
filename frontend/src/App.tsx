@@ -5,13 +5,20 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { Button, Flex, Heading, Text } from "@radix-ui/themes";
+import {
+  Button,
+  Flex,
+  Heading,
+  SegmentedControl,
+  Separator,
+  Text,
+} from "@radix-ui/themes";
 
 const size = 512;
 const total = size * size;
 
 import styles from "./App.module.scss";
-import { PlayIcon, SymbolIcon } from "@radix-ui/react-icons";
+import { InfoCircledIcon, PauseIcon, PlayIcon } from "@radix-ui/react-icons";
 
 /**
  * Start a new workflow (game) on the backend
@@ -29,18 +36,28 @@ const startWorkflow = async () => {
 /**
  * Send a splatter event to the backend
  */
-const sendSplatter = async (id: string, x: number, y: number) => {
+const sendSplatter = async (
+  id: string,
+  x: number,
+  y: number,
+  size: number,
+  shape: "circle" | "square"
+) => {
   await fetch(`${import.meta.env.VITE_BACKEND}/signal/${id}/splatter`, {
     method: "POST",
-    body: JSON.stringify({ x, y, size: 10 }),
+    body: JSON.stringify({ x, y, size, shape }),
   });
 };
 
 export default function App() {
   const [loading, setLoading] = useState(false);
+
   const [id, setId] = useState<string | null>(null);
   const [population, setPopulation] = useState(0);
   const [time, setTime] = useState(0);
+
+  const [shape] = useState<"circle" | "square">("circle");
+  const [radius, setRadius] = useState<"small" | "medium" | "large">("medium");
 
   const mouseDown = useRef(false);
   const tick = useRef(false);
@@ -164,12 +181,23 @@ export default function App() {
     };
   }, [initialize]);
 
-  const start = async () => {
+  const start = useCallback(async () => {
+    console.log("start/stop clicked");
+
+    // End the current workflow (game)
+    if (id) {
+      eventSource.current?.close();
+
+      setId(null);
+
+      return;
+    }
+
     setLoading(true);
 
-    const id = await startWorkflow();
-    initialize(id);
-  };
+    const workflowId = await startWorkflow();
+    initialize(workflowId);
+  }, [initialize, id]);
 
   const handleMouseMove = useCallback(
     (event: MouseEvent) => {
@@ -190,9 +218,15 @@ export default function App() {
       const x = Math.round((clientX - left) / multiplier);
       const y = Math.round((clientY - top) / multiplier);
 
-      sendSplatter(id, x, y);
+      sendSplatter(
+        id,
+        x,
+        y,
+        radius === "small" ? 5 : radius === "medium" ? 10 : 20,
+        shape
+      );
     },
-    [id]
+    [id, radius, shape]
   );
 
   useEffect(() => {
@@ -233,30 +267,70 @@ export default function App() {
         direction="column"
         className={styles.panel}
         position="fixed"
-        top="4"
+        bottom="4"
         left="4"
         width="240px"
       >
         <Flex align="center" justify="between">
-          <Text size="2">Population</Text>
-          <Heading>{population.toLocaleString()}</Heading>
+          <Text size="2" color="gray">
+            Population
+          </Text>
+          <Heading size="3">{population.toLocaleString()}</Heading>
         </Flex>
+        <Separator size="4" />
         <Flex align="center" justify="between">
-          <Text size="2">Time</Text>
-          <Heading>{time.toLocaleString()}</Heading>
+          <Text size="2" color="gray">
+            Time
+          </Text>
+          <Heading size="3">{time.toLocaleString()}</Heading>
         </Flex>
       </Flex>
-      <Flex
-        gap="2"
-        p="2"
-        className={styles.control}
-        position="fixed"
-        bottom="4"
-      >
-        <Button onClick={() => start()} loading={loading} disabled={loading}>
-          {id ? "Restart" : "Start"}
-          {id ? <SymbolIcon /> : <PlayIcon />}
-        </Button>
+      <Flex position="fixed" top="4" left="4" gap="3" direction="column">
+        <Flex gap="2" p="2" className={styles.panel} align="center">
+          <Button onClick={() => start()} loading={loading} disabled={loading}>
+            {id ? "Stop" : "Start"}
+            {id ? <PauseIcon /> : <PlayIcon />}
+          </Button>
+          {/* <Separator orientation="vertical" />
+          <Flex align="center" gap="3">
+            <Tooltip content="Shape">
+              <BorderSplitIcon />
+            </Tooltip>
+            <SegmentedControl.Root
+              disabled={!id}
+              value={shape}
+              onValueChange={(value) => setShape(value as "circle" | "square")}
+            >
+              <SegmentedControl.Item value="circle">Circle</SegmentedControl.Item>
+              <SegmentedControl.Item value="square">Square</SegmentedControl.Item>
+            </SegmentedControl.Root>
+          </Flex> */}
+          <Separator orientation="vertical" />
+          <Flex align="center" gap="3" pl="1">
+            <Text size="2" color="gray">
+              Splatter size
+            </Text>
+            <SegmentedControl.Root
+              disabled={!id}
+              value={radius}
+              onValueChange={(value) =>
+                setRadius(value as "small" | "medium" | "large")
+              }
+            >
+              <SegmentedControl.Item value="small">Small</SegmentedControl.Item>
+              <SegmentedControl.Item value="medium">
+                Medium
+              </SegmentedControl.Item>
+              <SegmentedControl.Item value="large">Large</SegmentedControl.Item>
+            </SegmentedControl.Root>
+          </Flex>
+        </Flex>
+        <Text size="2" color="gray">
+          <Flex align="center" gap="3" as="span">
+            <InfoCircledIcon />
+            Click and drag on the canvas to splatter cells
+          </Flex>
+        </Text>
       </Flex>
     </Flex>
   );
