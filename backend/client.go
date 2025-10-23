@@ -93,6 +93,8 @@ func (c *TemporalClient) RunWorker() error {
 	return nil
 }
 
+/* --------------------------- Frontend Endpoints --------------------------- */
+
 // GetState subscribes to the state stream and sends the state to the client via SSE
 func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 

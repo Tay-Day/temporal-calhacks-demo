@@ -1,6 +1,6 @@
-# Conversion CalHacks Demo - Temporal
+# Conversion CalHacks Demo - EternalGameOfLife 
 
-...
+This is a tutorial for using temporals signal system to implement the splatter functionality in the 
 
 ## Requirements
 
@@ -15,7 +15,7 @@
     scoop install go
     ```
 
-- Download [Temporal](https://learn.temporal.io/getting_started/go/dev_environment). Follow the suggested instructions or use your packaege manager like below
+- Download [Temporal](https://learn.temporal.io/getting_started/go/dev_environment). Follow the suggested instructions or use your package manager like below
 
   - Mac
     ```shell

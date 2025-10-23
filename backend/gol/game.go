@@ -60,6 +60,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			}
 			state.Board = board
 
+			state.Steps++
 			err = SendStateUpdate(ctx, previousState, state)
 			if err != nil {
 				continue
@@ -74,6 +75,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		previousState := state
 		state.Board = NextGeneration(state.Board)
 
+		state.Steps++
 		err = SendStateUpdate(ctx, previousState, state)
 		if err != nil {
 			return err
@@ -112,7 +114,6 @@ func SendStateUpdate(ctx workflow.Context, prevState, currState Gol) error {
 		TickTime: currState.TickTime,
 		Flipped:  flipped,
 	}
-	currState.Steps++
 
 	// Send the state to the channel
 	_, err := DoActivity(ctx, AmInstance.SendState, SendStateInput{
