@@ -10,7 +10,7 @@ import (
 
 const (
 	DefaultMaxSteps      = 1000
-	DefaultTickTime      = 1000 * time.Millisecond
+	DefaultTickTime      = 250 * time.Millisecond
 	DefaultBoardLength   = 512
 	DefaultBoardWidth    = 512
 	DefaultStoreInterval = 150
@@ -38,11 +38,6 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	// Initialize the game of life
 	state := Init(ctx, input)
 
-	// Allow queries to inspect board
-	workflow.SetQueryHandler(ctx, "getState", func() (Gol, error) {
-		return state, nil
-	})
-
 	// Allow updates to a single cell
 	splatterChannel := workflow.GetSignalChannel(ctx, "splatter")
 	workflow.Go(ctx, func(ctx workflow.Context) {
@@ -54,6 +49,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				request.Size = 5
 			}
 
+			previousState := state.Board
 			board, err := DoActivity(ctx, AmInstance.Splatter, SplatterInput{
 				Board:  state.Board,
 				Row:    request.X,
@@ -64,6 +60,24 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				continue
 			}
 			state.Board = board
+
+			// Compute the flipped cells to avoid activity memory limits
+			flipped := DiffFlipped(previousState, state.Board)
+			stateChange := StateChange{
+				Id:       state.Id,
+				Step:     state.Steps,
+				TickTime: state.TickTime,
+				Flipped:  flipped,
+			}
+
+			// Send the state to the channel
+			AmInstance.SendState(SendStateInput{
+				State:    stateChange,
+				TickTime: state.TickTime,
+			})
+			if err != nil {
+				continue
+			}
 		}
 	})
 
@@ -73,6 +87,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			var request UpdateTickTimeSignal
 			updateTickTimeChannel.Receive(ctx, &request)
 			state.TickTime = time.Duration(request.TickTime) * time.Millisecond
+
 		}
 	})
 
@@ -94,13 +109,10 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		}
 
 		// Send the state to the channel
-		_, err := DoActivity(ctx, AmInstance.SendState, SendStateInput{
+		AmInstance.SendState(SendStateInput{
 			State:    stateChange,
 			TickTime: state.TickTime,
 		})
-		if err != nil {
-			return err
-		}
 
 		// Avoid large workflow histories by continuing as new every 250 steps
 		if state.Steps%DefaultStoreInterval == 0 {

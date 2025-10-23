@@ -180,18 +180,6 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 		board[i] = make([]bool, input.Width)
 	}
 
-	for range 5 {
-
-		// Splatter the board
-		board, err = a.RandomSplatter(ctx, RandomSplatterInput{
-			Board:  board,
-			Radius: rand.Intn(len(board)/10) + 1,
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return board, nil
 }
 
@@ -201,7 +189,7 @@ type SendStateInput struct {
 }
 
 // SendState sends the current state to the state stream
-func (a *Am) SendState(ctx context.Context, input SendStateInput) (StateChange, error) {
+func (a *Am) SendState(input SendStateInput) (StateChange, error) {
 	time.Sleep(input.TickTime)
 
 	StateStreamsMu.Lock()
