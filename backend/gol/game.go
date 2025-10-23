@@ -31,12 +31,6 @@ type SplatterSignal struct {
 	Size int `json:"size"`
 }
 
-const UpdateTickTimeSignalName = "updateTickTime"
-
-type UpdateTickTimeSignal struct {
-	TickTime int `json:"tickTime"`
-}
-
 // Main workflow function for the Game of Life
 func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 
@@ -70,15 +64,6 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			if err != nil {
 				continue
 			}
-		}
-	})
-
-	updateTickTimeChannel := workflow.GetSignalChannel(ctx, UpdateTickTimeSignalName)
-	workflow.Go(ctx, func(ctx workflow.Context) {
-		for {
-			var request UpdateTickTimeSignal
-			updateTickTimeChannel.Receive(ctx, &request)
-			state.TickTime = time.Duration(request.TickTime) * time.Millisecond
 		}
 	})
 

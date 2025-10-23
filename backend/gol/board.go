@@ -172,13 +172,29 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 		board[i] = make([]bool, input.Width)
 	}
 
-	// Splatter in the middle of the board
-	a.Splatter(ctx, SplatterInput{
-		Board:  board,
-		Row:    input.Length / 2,
-		Col:    input.Width / 2,
-		Radius: input.Length / 10,
-	})
+	// Number of random clusters
+	numClusters := rand.Intn(8) + 5 // 5–12 clusters
+
+	for range numClusters {
+		centerRow := rand.Intn(input.Length)
+		centerCol := rand.Intn(input.Width)
+		radius := rand.Intn(4) + 2 // radius 2–5
+
+		// Fill cells in roughly circular clusters
+		for i := -radius; i <= radius; i++ {
+			for j := -radius; j <= radius; j++ {
+				if i*i+j*j <= radius*radius {
+					r := centerRow + i
+					c := centerCol + j
+					if r >= 0 && r < input.Length && c >= 0 && c < input.Width {
+						if rand.Float64() < 0.6 { // density
+							board[r][c] = true
+						}
+					}
+				}
+			}
+		}
+	}
 
 	return board, nil
 }
