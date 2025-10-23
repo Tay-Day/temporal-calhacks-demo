@@ -155,7 +155,7 @@ func (a *Am) Splatter(ctx context.Context, input SplatterInput) (Board, error) {
 	})
 
 	// Choose a random number of cells to fill
-	numToFill := rand.Intn(len(candidates)) + 1
+	numToFill := rand.Intn(len(candidates)/2) + 1
 
 	for i := range numToFill {
 		r, c := candidates[i][0], candidates[i][1]
