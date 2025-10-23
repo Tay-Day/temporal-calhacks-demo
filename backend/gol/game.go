@@ -3,7 +3,6 @@ package gol
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"go.temporal.io/sdk/workflow"
@@ -12,8 +11,8 @@ import (
 const (
 	DefaultMaxSteps      = 1000
 	DefaultTickTime      = 1000 * time.Millisecond
-	DefaultBoardLength   = 40
-	DefaultBoardWidth    = 40
+	DefaultBoardLength   = 512
+	DefaultBoardWidth    = 512
 	DefaultStoreInterval = 150
 )
 
@@ -54,8 +53,6 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			if request.Size == 0 {
 				request.Size = 5
 			}
-
-			log.Println("Splattering board at", request.X, request.Y, request.Size)
 
 			board, err := DoActivity(ctx, AmInstance.Splatter, SplatterInput{
 				Board:  state.Board,
@@ -104,7 +101,6 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		if err != nil {
 			return err
 		}
-		PrintBoard(state.Board)
 
 		// Avoid large workflow histories by continuing as new every 250 steps
 		if state.Steps%DefaultStoreInterval == 0 {
