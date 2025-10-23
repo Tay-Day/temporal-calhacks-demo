@@ -114,7 +114,7 @@ func (a *Am) RandomSplatter(ctx context.Context, input RandomSplatterInput) (Boa
 	row := rand.Intn(len(input.Board))
 	col := rand.Intn(len(input.Board[0]))
 
-	numCellsToSet := rand.Intn(input.Radius*4) + 4
+	numCellsToSet := rand.Intn(input.Radius * input.Radius / 2)
 
 	return a.Splatter(ctx, SplatterInput{
 		Board:         input.Board,
@@ -136,19 +136,30 @@ type SplatterInput struct {
 }
 
 func (a *Am) Splatter(ctx context.Context, input SplatterInput) (Board, error) {
+	rows := len(input.Board)
+	cols := len(input.Board[0])
 
-	for range input.NumCellsToSet {
-		// Random offset around the target cell
-		dr := rand.Intn(input.Radius*2+1) - input.Radius
-		dc := rand.Intn(input.Radius*2+1) - input.Radius
+	for i := -input.Radius; i <= input.Radius; i++ {
+		for j := -input.Radius; j <= input.Radius; j++ {
+			r := input.Row + i
+			c := input.Col + j
 
-		r := input.Row + dr
-		c := input.Col + dc
+			// Check bounds
+			if r < 0 || r >= rows || c < 0 || c >= cols {
+				continue
+			}
 
-		if r >= 0 && r < len(input.Board) && c >= 0 && c < len(input.Board[0]) {
-			input.Board[r][c] = true
+			// Check if inside circle radius
+			if i*i+j*j <= input.Radius*input.Radius {
+				// Add minor randomness: 80% chance to fill
+				if rand.Float64() < 0.8 {
+					input.Board[r][c] = true
+				}
+			}
 		}
 	}
+
+	// Ensure the center cell is always alive
 	input.Board[input.Row][input.Col] = true
 	return input.Board, nil
 }
@@ -165,7 +176,7 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 		board[i] = make([]bool, input.Width)
 	}
 
-	for range 50 {
+	for range 10 {
 
 		// Splatter the board
 		board, err = a.RandomSplatter(ctx, RandomSplatterInput{
