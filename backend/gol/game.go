@@ -72,7 +72,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		state.Board = NextGeneration(state.Board)
 		state.Steps++
 
-		// Compute the flipped cells
+		// Compute the flipped cells to avoid activity memory limits
 		flipped := DiffFlipped(previousState.Board, state.Board)
 		stateChange := StateChange{
 			Id:       state.Id,
@@ -81,7 +81,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			Flipped:  flipped,
 		}
 
-		// Wait for a tick (we don't use a temporal timer because its too slow)
+		// Send the state to the channel
 		_, err := DoActivity(ctx, AmInstance.SendState, SendStateInput{
 			State:    stateChange,
 			TickTime: state.TickTime,

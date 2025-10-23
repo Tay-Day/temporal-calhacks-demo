@@ -32,8 +32,15 @@ func main() {
 }
 
 func handleEndpoints(temporalClient TemporalClientInterface, mux *http.ServeMux) {
-	mux.HandleFunc("/start", temporalClient.StartGameOfLife)
-	mux.HandleFunc("/state/", temporalClient.GetState)
-	mux.HandleFunc("/signal/", temporalClient.SendSignal)
+	mux.HandleFunc("/start", WrapHandler(temporalClient.StartGameOfLife))
+	mux.HandleFunc("/state/", WrapHandler(temporalClient.GetState))
+	mux.HandleFunc("/signal/", WrapHandler(temporalClient.SendSignal))
 	http.ListenAndServe(":8080", mux)
+}
+
+func WrapHandler(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		http.HandlerFunc(handler).ServeHTTP(w, r)
+	}
 }
