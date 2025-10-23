@@ -114,25 +114,21 @@ func (a *Am) RandomSplatter(ctx context.Context, input RandomSplatterInput) (Boa
 	row := rand.Intn(len(input.Board))
 	col := rand.Intn(len(input.Board[0]))
 
-	numCellsToSet := rand.Intn(input.Radius * input.Radius / 2)
-
 	return a.Splatter(ctx, SplatterInput{
-		Board:         input.Board,
-		Row:           row,
-		Col:           col,
-		Radius:        input.Radius,
-		NumCellsToSet: numCellsToSet,
+		Board:  input.Board,
+		Row:    row,
+		Col:    col,
+		Radius: input.Radius,
 	})
 }
 
 // splatter affects a single cell and its surrounding cells
 // randomly chooses spat zones and then randomly sets cells to true in the splat zone
 type SplatterInput struct {
-	Board         Board
-	Row           int
-	Col           int
-	Radius        int
-	NumCellsToSet int
+	Board  Board
+	Row    int
+	Col    int
+	Radius int
 }
 
 func (a *Am) Splatter(ctx context.Context, input SplatterInput) (Board, error) {

@@ -47,11 +47,10 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			}
 
 			board, err := DoActivity(ctx, AmInstance.Splatter, SplatterInput{
-				Board:         state.Board,
-				Row:           request.X,
-				Col:           request.Y,
-				Radius:        request.Size,
-				NumCellsToSet: request.Size * request.Size / 2,
+				Board:  state.Board,
+				Row:    request.X,
+				Col:    request.Y,
+				Radius: request.Size,
 			})
 			if err != nil {
 				continue
