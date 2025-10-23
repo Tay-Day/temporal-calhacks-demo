@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"go.uber.org/zap"
@@ -184,11 +184,12 @@ func (c *TemporalClient) SendSignal(w http.ResponseWriter, r *http.Request) {
 
 func (c *TemporalClient) StartGameOfLife(w http.ResponseWriter, r *http.Request) {
 
-	workflowID := uuid.New().String()
+	workflowID := "gol" // deterministic to delete other games
 
 	options := client.StartWorkflowOptions{
-		ID:        workflowID,
-		TaskQueue: c.taskQueue,
+		ID:                    workflowID,
+		TaskQueue:             c.taskQueue,
+		WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
 	}
 	_, err := c.ExecuteWorkflow(r.Context(), options, gol.GameOfLife, gol.GameOfLifeInput{})
 	if err != nil {
