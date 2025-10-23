@@ -180,6 +180,14 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 		board[i] = make([]bool, input.Width)
 	}
 
+	// Splatter in the middle of the board
+	a.Splatter(ctx, SplatterInput{
+		Board:  board,
+		Row:    input.Length / 2,
+		Col:    input.Width / 2,
+		Radius: input.Length / 10,
+	})
+
 	return board, nil
 }
 
