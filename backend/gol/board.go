@@ -76,7 +76,19 @@ func countAliveNeighbors(board Board, i, j int) int {
 	return count
 }
 
-var emptyBoard = make(Board, DefaultBoardLength, DefaultBoardWidth)
+func StateChangeFromNothing(from Gol) StateChange {
+	board := make(Board, DefaultBoardLength)
+	for i := range board {
+		board[i] = make([]bool, DefaultBoardWidth)
+	}
+	return StateChange{
+		Id:       from.Id,
+		Paused:   from.Paused,
+		Step:     from.steps,
+		TickTime: from.TickTime,
+		Flipped:  DiffFlipped(board, from.Board),
+	}
+}
 
 func DiffState(prev, curr Gol) StateChange {
 	return StateChange{
