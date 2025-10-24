@@ -3,7 +3,6 @@ module backend
 go 1.25.3
 
 require (
-	github.com/google/uuid v1.6.0
 	go.temporal.io/api v1.53.0
 	go.temporal.io/sdk v1.37.0
 	go.uber.org/zap v1.27.0
@@ -14,6 +13,7 @@ require (
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/mock v1.6.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect
 	github.com/nexus-rpc/sdk-go v0.3.0 // indirect

@@ -116,8 +116,8 @@ func (c *TemporalClient) RunWorker() error {
 // GetState subscribes to the state stream and sends the state to the client via SSE
 func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 
-	if gol.StateStream == nil {
-		http.Error(w, "State stream not initialized", http.StatusNotFound)
+	if gol.StateStream == nil || gol.GolBoard == nil {
+		http.Error(w, "Game not ready", http.StatusNotFound)
 		return
 	}
 
@@ -217,7 +217,6 @@ func (c *TemporalClient) SendSignal(w http.ResponseWriter, r *http.Request) {
 
 // StartGameOfLife starts a new game of life workflow
 func (c *TemporalClient) StartGameOfLife(w http.ResponseWriter, r *http.Request) {
-
 	options := client.StartWorkflowOptions{
 		ID:                    GameOfLifeId,
 		TaskQueue:             c.taskQueue,
