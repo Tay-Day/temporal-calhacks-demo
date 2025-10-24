@@ -161,6 +161,7 @@ func (a *Am) SendState(ctx context.Context, state StateChange) error {
 
 	select {
 	case StateStream <- state:
+	case StateStream <- state:
 	default:
 		// Drop if no listener
 	}
