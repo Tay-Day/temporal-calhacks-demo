@@ -135,19 +135,16 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	// Send the connection established event
-	_, err := fmt.Fprintf(w, "event: connection_established\n")
+	// Get the board from the workflow
+	stateChangeEnvelope, err := c.QueryWorkflow(ctx, GameOfLifeId, "", "board")
 	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	flusher.Flush()
 
-	// Get the board from the workflow
-	stateChange, err := c.QueryWorkflow(r.Context(), GameOfLifeId, "", "board")
-	if err != nil {
+	// Decode the result into your StateChange struct
+	var stateChange gol.StateChange
+	if err := stateChangeEnvelope.Get(&stateChange); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -156,6 +153,18 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	// Send the connection established event
+	_, err = fmt.Fprintf(w, "event: connection_established\n")
+	if err != nil {
+		return
+	}
+	flusher.Flush()
+
+	// Send the initial state because on initial connection we need the full object.
 	fmt.Fprintf(w, "data: %s\n\n", stateChangeJson)
 	flusher.Flush()
 

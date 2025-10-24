@@ -31,87 +31,6 @@ type Gol struct {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                Deterministic                               */
-/* -------------------------------------------------------------------------- */
-
-// Any live cell with fewer than two live neighbours dies, as if by underpopulation.
-// Any live cell with two or three live neighbours lives on to the next generation.
-// Any live cell with more than three live neighbours dies, as if by overpopulation.
-// Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-func NextGeneration(board Board) Board {
-	rows := len(board)
-	cols := len(board[0])
-	next := make(Board, rows)
-	for i := range next {
-		next[i] = make([]bool, cols)
-		for j := range next[i] {
-			aliveNeighbors := countAliveNeighbors(board, i, j)
-			if board[i][j] {
-				next[i][j] = aliveNeighbors == 2 || aliveNeighbors == 3
-			} else {
-				next[i][j] = aliveNeighbors == 3
-			}
-		}
-	}
-	return next
-}
-
-func countAliveNeighbors(board Board, i, j int) int {
-	count := 0
-	for x := -1; x <= 1; x++ {
-		for y := -1; y <= 1; y++ {
-			if x == 0 && y == 0 {
-				continue
-			}
-			nx := i + x
-			ny := j + y
-			if nx < 0 || nx >= len(board) || ny < 0 || ny >= len(board[0]) {
-				continue
-			}
-			if board[nx][ny] {
-				count++
-			}
-		}
-	}
-	return count
-}
-
-func StateChangeFromNothing(from Gol) StateChange {
-	board := make(Board, DefaultBoardLength)
-	for i := range board {
-		board[i] = make([]bool, DefaultBoardWidth)
-	}
-	return StateChange{
-		Id:       from.Id,
-		Paused:   from.Paused,
-		Step:     from.steps,
-		TickTime: from.TickTime,
-		Flipped:  DiffFlipped(board, from.Board),
-	}
-}
-
-func DiffState(prev, curr Gol) StateChange {
-	return StateChange{
-		Id:       curr.Id,
-		Paused:   curr.Paused,
-		Step:     curr.steps,
-		TickTime: curr.TickTime,
-		Flipped:  DiffFlipped(prev.Board, curr.Board),
-	}
-}
-func DiffFlipped(prev, curr Board) [][2]int {
-	var flipped [][2]int
-	for i := range curr {
-		for j := range curr[i] {
-			if prev[i][j] != curr[i][j] {
-				flipped = append(flipped, [2]int{i, j})
-			}
-		}
-	}
-	return flipped
-}
-
-/* -------------------------------------------------------------------------- */
 /*                                 Activities                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -224,26 +143,23 @@ var Boards = make(map[string]Board)
 var BoardsMu sync.RWMutex
 
 type SendStateInput struct {
-	State    StateChange
-	TickTime time.Duration
+	State StateChange
 }
 
-var stateLock = sync.Mutex{}
-
 // SendState sends the current state to the state stream
-func (a *Am) SendState(ctx context.Context, input SendStateInput) (StateChange, error) {
-	time.Sleep(input.TickTime)
-	stateLock.Lock()
-	defer stateLock.Unlock()
+func (a *Am) TickAndSendState(ctx context.Context, input SendStateInput) (StateChange, error) {
 
+	time.Sleep(input.State.TickTime)
+
+	// Wait for the tick
 	if StateStream == nil {
-		StateStream = make(chan StateChange)
+		StateStream = make(chan StateChange, 5)
 	}
 
 	select {
 	case StateStream <- input.State:
 	default:
-		// Drop update if no listener ready
+		// Drop if no listener
 	}
 
 	return input.State, nil
