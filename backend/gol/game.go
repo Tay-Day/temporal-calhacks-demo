@@ -48,13 +48,12 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			toggleChannel.Receive(ctx, nil)
 			state.Paused = !state.Paused
 
-			if !state.Paused {
-				resumeCh.Send(ctx, nil)
-			}
-
 			err = state.SendStateUpdate(ctx, state)
 			if err != nil {
 				continue
+			}
+			if !state.Paused {
+				resumeCh.Send(ctx, nil)
 			}
 		}
 	})
