@@ -171,7 +171,6 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Context done")
 			return
 		case <-ticker.C:
 			_, err := fmt.Fprintf(w, "event: ping\n\n")
