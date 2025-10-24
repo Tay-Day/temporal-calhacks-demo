@@ -50,6 +50,12 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			if !state.Paused {
 				resumeCh.Send(ctx, nil)
 			}
+
+			state.Steps++
+			err = SendStateUpdate(ctx, state, state)
+			if err != nil {
+				continue
+			}
 		}
 	})
 
