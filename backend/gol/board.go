@@ -25,7 +25,7 @@ type Gol struct {
 	Id       string
 	Paused   bool
 	Board    Board
-	Steps    int
+	steps    int
 	MaxStep  int
 	TickTime time.Duration
 }

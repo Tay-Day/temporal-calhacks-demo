@@ -3,6 +3,7 @@ package gol
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"go.temporal.io/sdk/workflow"
@@ -51,8 +52,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				resumeCh.Send(ctx, nil)
 			}
 
-			state.Steps++
-			err = SendStateUpdate(ctx, state, state)
+			err = state.SendStateUpdate(ctx, state)
 			if err != nil {
 				continue
 			}
@@ -68,7 +68,6 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			if request.Size == 0 {
 				request.Size = 5
 			}
-			previousState := state
 			board, err := DoActivity(ctx, AmInstance.Splatter, SplatterInput{
 				Board:  state.Board,
 				Row:    request.X,
@@ -79,8 +78,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				continue
 			}
 			state.Board = board
-			state.Steps++
-			err = SendStateUpdate(ctx, previousState, state)
+			err = state.SendStateUpdate(ctx, state)
 			if err != nil {
 				continue
 			}
@@ -88,7 +86,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	})
 
 	// Steps through the generations
-	for state.Steps < state.MaxStep {
+	for state.steps < state.MaxStep {
 
 		// Block until resumed
 		if state.Paused {
@@ -99,14 +97,13 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		previousState := state
 		state.Board = NextGeneration(state.Board)
 
-		state.Steps++
-		err = SendStateUpdate(ctx, previousState, state)
+		err = state.SendStateUpdate(ctx, previousState)
 		if err != nil {
 			return err
 		}
 
 		// Avoid large workflow histories
-		if state.Steps%DefaultStoreInterval == 0 {
+		if state.steps%DefaultStoreInterval == 0 {
 			ref, err := DoActivity(ctx, AmInstance.StoreBoard, state.Board)
 			if err != nil {
 				return err
@@ -115,7 +112,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				BoardRef:  ref,
 				MaxSteps:  input.MaxSteps,
 				TickTime:  input.TickTime,
-				PrevSteps: state.Steps,
+				PrevSteps: state.steps,
 			})
 		}
 	}
@@ -130,23 +127,28 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 /*                                   Helpers                                  */
 /* -------------------------------------------------------------------------- */
 
+var stateChangeLock = sync.Mutex{}
+
 // SendStateUpdate sends the difference between the previous and current state to the state stream
-func SendStateUpdate(ctx workflow.Context, prevState, currState Gol) error {
+func (g *Gol) SendStateUpdate(ctx workflow.Context, prevState Gol) error {
+	stateChangeLock.Lock()
+	defer stateChangeLock.Unlock()
+	g.steps++
 
 	// Compute the flipped cells to avoid activity memory limits
-	flipped := DiffFlipped(prevState.Board, currState.Board)
+	flipped := DiffFlipped(prevState.Board, g.Board)
 	stateChange := StateChange{
-		Id:       currState.Id,
-		Paused:   currState.Paused,
-		Step:     currState.Steps,
-		TickTime: currState.TickTime,
+		Id:       g.Id,
+		Paused:   g.Paused,
+		Step:     g.steps,
+		TickTime: g.TickTime,
 		Flipped:  flipped,
 	}
 
 	// Send the state to the channel
 	_, err := DoActivity(ctx, AmInstance.SendState, SendStateInput{
 		State:    stateChange,
-		TickTime: currState.TickTime,
+		TickTime: g.TickTime,
 	})
 	if err != nil {
 		return err
@@ -186,7 +188,7 @@ func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 		MaxStep:  input.MaxSteps,
 		Paused:   input.Paused,
 		TickTime: input.TickTime,
-		Steps:    input.PrevSteps + 1,
+		steps:    input.PrevSteps + 1,
 	}
 }
 
