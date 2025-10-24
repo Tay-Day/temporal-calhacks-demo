@@ -68,6 +68,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			if request.Size == 0 {
 				request.Size = 5
 			}
+			previousState := state
 			board, err := DoActivity(ctx, AmInstance.Splatter, SplatterInput{
 				Board:  state.Board,
 				Row:    request.X,
@@ -78,7 +79,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				continue
 			}
 			state.Board = board
-			err = state.SendStateUpdate(ctx, state)
+			err = state.SendStateUpdate(ctx, previousState)
 			if err != nil {
 				continue
 			}
