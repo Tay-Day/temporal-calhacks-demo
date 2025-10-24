@@ -3,6 +3,7 @@ package gol
 import (
 	"context"
 	"errors"
+	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -10,6 +11,22 @@ import (
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/workflow"
 )
+
+type Board [][]bool // true means alive, false means dead
+
+var GolBoard Board
+
+func init() {
+	// Get a random board
+	board, err := AmInstance.GetRandomBoard(context.Background(), GetRandomBoardInput{
+		Length: DefaultBoardLength,
+		Width:  DefaultBoardWidth,
+	})
+	if err != nil {
+		log.Fatalf("Error getting random board: %v", err)
+	}
+	GolBoard = board
+}
 
 type StateChange struct {
 	Id       string        `json:"id"`
@@ -19,14 +36,10 @@ type StateChange struct {
 	Flipped  [][2]int      `json:"flipped"` // slice of [row, col] pairs
 }
 
-type Board [][]bool // true means alive, false means dead
-
-type Gol struct {
+type GolState struct {
 	Id       string
 	Paused   bool
-	Board    Board
 	steps    int
-	MaxStep  int
 	TickTime time.Duration
 }
 
@@ -51,40 +64,8 @@ type SplatterInput struct {
 	Radius int
 }
 
+// TODO: Implement this
 func (a *Am) Splatter(ctx context.Context, input SplatterInput) (Board, error) {
-	rows := len(input.Board)
-	cols := len(input.Board[0])
-
-	// Collect all cells within the circular radius
-	var candidates [][2]int
-	for i := -input.Radius; i <= input.Radius; i++ {
-		for j := -input.Radius; j <= input.Radius; j++ {
-			if i*i+j*j <= input.Radius*input.Radius {
-				r := input.Row + i
-				c := input.Col + j
-				if r >= 0 && r < rows && c >= 0 && c < cols {
-					candidates = append(candidates, [2]int{r, c})
-				}
-			}
-		}
-	}
-
-	// Randomly shuffle candidates
-	rand.Shuffle(len(candidates), func(i, j int) {
-		candidates[i], candidates[j] = candidates[j], candidates[i]
-	})
-
-	// Choose a random number of cells to fill
-	numToFill := rand.Intn(len(candidates)/2) + 1
-
-	for i := range numToFill {
-		r, c := candidates[i][0], candidates[i][1]
-		input.Board[r][c] = true
-	}
-
-	// Ensure the center cell is always alive
-	input.Board[input.Row][input.Col] = true
-
 	return input.Board, nil
 }
 
@@ -142,27 +123,31 @@ var StateStream chan StateChange
 var Boards = make(map[string]Board)
 var BoardsMu sync.RWMutex
 
-type SendStateInput struct {
-	State StateChange
+// SendState sends the current state to the state stream
+func (a *Am) TickAndSendState(ctx context.Context, input GolState) (StateChange, error) {
+	// Wait for the tick
+	// Compute the next generation
+	nextGeneration := NextGeneration(GolBoard)
+	// Compute the state change
+	stateChange := DiffState(GolBoard, nextGeneration)
+
+	// Send the state change
+	time.Sleep(input.TickTime)
+	return a.SendState(ctx, input)
 }
 
-// SendState sends the current state to the state stream
-func (a *Am) TickAndSendState(ctx context.Context, input SendStateInput) (StateChange, error) {
-
-	time.Sleep(input.State.TickTime)
-
-	// Wait for the tick
+func (a *Am) SendState(ctx context.Context, state StateChange) (StateChange, error) {
 	if StateStream == nil {
 		StateStream = make(chan StateChange, 5)
 	}
 
 	select {
-	case StateStream <- input.State:
+	case StateStream <- state:
 	default:
 		// Drop if no listener
 	}
 
-	return input.State, nil
+	return state, nil
 }
 
 func (a *Am) StoreBoard(ctx context.Context, board Board) (ref string, err error) {

@@ -83,20 +83,17 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 
 		if !state.Paused {
 			prev := state
-			nextBoard := NextGeneration(state.Board)
-			next := DiffState(prev, state)
-			next.Step += 1
-			future := workflow.ExecuteActivity(activityCtx, AmInstance.TickAndSendState, SendStateInput{
-				State: next,
-			})
+			next := state
+			next.Board = NextGeneration(state.Board)
+			nextState := DiffState(prev, next)
+			future := workflow.ExecuteActivity(activityCtx, AmInstance.TickAndSendState, nextState)
+
+			// Set the state when this future is ready
 			selector.AddFuture(future, func(f workflow.Future) {
 				var result StateChange
 				f.Get(ctx, &result)
-				if result.Step != next.Step {
-					log.Fatalf("Step mismatch: %d != %d", result.Step, next.Step)
-				}
-				state.Board = nextBoard
-				state.steps = next.Step
+				state.Board = next.Board
+				state.steps = nextState.Step
 			})
 		}
 
@@ -132,43 +129,33 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 /* -------------------------------------------------------------------------- */
 
 // Init enforces defaults for the game of life
-func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
+func Init(ctx workflow.Context, input GameOfLifeInput) GolState {
 	if input.MaxSteps == 0 {
 		input.MaxSteps = DefaultMaxSteps
 	}
 
-	var start Board
 	var err error
 	if input.BoardRef != "" {
-		start, err = DoActivity(ctx, AmInstance.GetBoard, input.BoardRef)
+		// Set the board from the reference
+		GolBoard, err = DoActivity(ctx, AmInstance.GetBoard, input.BoardRef)
 		if err != nil {
-			return Gol{}
-		}
-	} else {
-		start, err = DoActivity(ctx, AmInstance.GetRandomBoard, GetRandomBoardInput{
-			Length: DefaultBoardLength,
-			Width:  DefaultBoardWidth,
-		})
-		if err != nil {
-			return Gol{}
+			return GolState{}
 		}
 	}
 
 	// Get the current workflows ID
 	workflowId := workflow.GetInfo(ctx).WorkflowExecution.ID
 
-	return Gol{
+	return GolState{
 		Id:       workflowId,
-		Board:    start,
-		MaxStep:  input.MaxSteps,
 		Paused:   input.Paused,
 		TickTime: input.TickTime,
-		steps:    input.PrevSteps + 1,
+		steps:    input.PrevSteps,
 	}
 }
 
 // SendStateUpdate sends the difference between the previous and current state to the state stream
-func (g *Gol) SendStateUpdate(ctx workflow.Context, prevState Gol) error {
+func (g *GolState) SendStateUpdate(ctx workflow.Context, prevState GolState) error {
 
 	// Compute the flipped cells to avoid activity memory limits
 	stateChange := DiffState(prevState, *g)
@@ -251,7 +238,7 @@ func countAliveNeighbors(board Board, i, j int) int {
 	return count
 }
 
-func StateChangeFromNothing(from Gol) StateChange {
+func StateChangeFromNothing(from GolState) StateChange {
 	board := make(Board, DefaultBoardLength)
 	for i := range board {
 		board[i] = make([]bool, DefaultBoardWidth)
@@ -261,19 +248,10 @@ func StateChangeFromNothing(from Gol) StateChange {
 		Paused:   from.Paused,
 		Step:     from.steps,
 		TickTime: from.TickTime,
-		Flipped:  DiffFlipped(board, from.Board),
+		Flipped:  DiffFlipped(board, GolBoard),
 	}
 }
 
-func DiffState(prev, curr Gol) StateChange {
-	return StateChange{
-		Id:       curr.Id,
-		Paused:   curr.Paused,
-		Step:     curr.steps,
-		TickTime: curr.TickTime,
-		Flipped:  DiffFlipped(prev.Board, curr.Board),
-	}
-}
 func DiffFlipped(prev, curr Board) [][2]int {
 	var flipped [][2]int
 	for i := range curr {
