@@ -39,7 +39,6 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 
 	// Initialize the game of life
 	state := Init(ctx, input)
-	stateLock := workflow.NewMutex(ctx)
 
 	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
 	resumeCh := workflow.NewChannel(ctx)
@@ -48,7 +47,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			toggleChannel.Receive(ctx, nil)
 			state.Paused = !state.Paused
 
-			err = state.SendStateUpdate(ctx, stateLock, state)
+			err = state.SendStateUpdate(ctx, state)
 			if err != nil {
 				continue
 			}
@@ -78,7 +77,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				continue
 			}
 			state.Board = board
-			err = state.SendStateUpdate(ctx, stateLock, previousState)
+			err = state.SendStateUpdate(ctx, previousState)
 			if err != nil {
 				continue
 			}
@@ -97,7 +96,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		previousState := state
 		state.Board = NextGeneration(state.Board)
 
-		err = state.SendStateUpdate(ctx, stateLock, previousState)
+		err = state.SendStateUpdate(ctx, previousState)
 		if err != nil {
 			return err
 		}
@@ -128,9 +127,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 /* -------------------------------------------------------------------------- */
 
 // SendStateUpdate sends the difference between the previous and current state to the state stream
-func (g *Gol) SendStateUpdate(ctx workflow.Context, lock workflow.Mutex, prevState Gol) error {
-	lock.Lock(ctx)
-	defer lock.Unlock()
+func (g *Gol) SendStateUpdate(ctx workflow.Context, prevState Gol) error {
 	g.steps++
 
 	// Compute the flipped cells to avoid activity memory limits

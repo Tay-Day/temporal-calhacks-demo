@@ -205,9 +205,13 @@ type SendStateInput struct {
 	TickTime time.Duration
 }
 
+var stateLock = sync.Mutex{}
+
 // SendState sends the current state to the state stream
 func (a *Am) SendState(ctx context.Context, input SendStateInput) (StateChange, error) {
 	time.Sleep(input.TickTime)
+	stateLock.Lock()
+	defer stateLock.Unlock()
 
 	if StateStream == nil {
 		StateStream = make(chan StateChange)
