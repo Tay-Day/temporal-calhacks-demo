@@ -53,6 +53,34 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		}
 	})
 
+	// Allow updates to a single cell
+	splatterChannel := workflow.GetSignalChannel(ctx, SplatterSignalName)
+	workflow.Go(ctx, func(ctx workflow.Context) {
+		for {
+			var request SplatterSignal
+			splatterChannel.Receive(ctx, &request)
+			if request.Size == 0 {
+				request.Size = 5
+			}
+			previousState := state
+			board, err := DoActivity(ctx, AmInstance.Splatter, SplatterInput{
+				Board:  state.Board,
+				Row:    request.X,
+				Col:    request.Y,
+				Radius: request.Size,
+			})
+			if err != nil {
+				continue
+			}
+			state.Board = board
+			state.Steps++
+			err = SendStateUpdate(ctx, previousState, state)
+			if err != nil {
+				continue
+			}
+		}
+	})
+
 	// Steps through the generations
 	for state.Steps < state.MaxStep {
 
