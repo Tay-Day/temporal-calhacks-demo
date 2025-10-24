@@ -41,7 +41,9 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	state := Init(ctx, input)
 
 	workflow.SetQueryHandler(ctx, "board", func() (StateChange, error) {
-		return DiffState(state, state), nil
+		stateChange := DiffState(state, state)
+		stateChange.Flipped = DiffFlipped(emptyBoard, state.Board)
+		return stateChange, nil
 	})
 
 	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
