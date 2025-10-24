@@ -161,9 +161,15 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 	// Number of random clusters
 	numClusters := rand.Intn(8) + 5 // 5–12 clusters
 
+	// Center point
+	centerRowMid := input.Length / 2
+	centerColMid := input.Width / 2
+
 	for range numClusters {
-		centerRow := rand.Intn(input.Length)
-		centerCol := rand.Intn(input.Width)
+		offsetRow := rand.Intn(input.Length/3) - input.Length/6 // within ±⅙ of total height
+		offsetCol := rand.Intn(input.Width/3) - input.Width/6   // within ±⅙ of total width
+		centerRow := centerRowMid + offsetRow
+		centerCol := centerColMid + offsetCol
 		radius := rand.Intn(4) + 2 // radius 2–5
 
 		// Fill cells in roughly circular clusters
