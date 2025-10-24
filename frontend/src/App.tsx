@@ -14,11 +14,17 @@ import {
   Text,
 } from "@radix-ui/themes";
 
-const size = 512;
-const total = size * size;
+const MAX_TIME = 5000;
+const SIZE = 512;
+const TOTAL = SIZE * SIZE;
 
 import styles from "./App.module.scss";
-import { InfoCircledIcon, PauseIcon, PlayIcon } from "@radix-ui/react-icons";
+import {
+  InfoCircledIcon,
+  PauseIcon,
+  PlayIcon,
+  SymbolIcon,
+} from "@radix-ui/react-icons";
 
 /**
  * Start a new workflow (game) on the backend
@@ -36,27 +42,34 @@ const startWorkflow = async () => {
 /**
  * Send a splatter event to the backend
  */
-const sendSplatter = async (
-  id: string,
-  x: number,
-  y: number,
-  size: number,
-  shape: "circle" | "square"
-) => {
-  await fetch(`${import.meta.env.VITE_BACKEND}/signal/${id}/splatter`, {
+const sendSplatter = async (x: number, y: number, size: number) => {
+  await fetch(`${import.meta.env.VITE_BACKEND}/signal/splatter`, {
     method: "POST",
-    body: JSON.stringify({ x, y, size, shape }),
+    body: JSON.stringify({ x, y, size }),
+  });
+};
+
+/**
+ * Pause or resume the workflow on the backend
+ */
+const toggleWorkflowStatus = async () => {
+  await fetch(`${import.meta.env.VITE_BACKEND}/signal/toggleStatus`, {
+    method: "POST",
   });
 };
 
 export default function App() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState(false);
 
-  const [id, setId] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+
   const [population, setPopulation] = useState(0);
   const [time, setTime] = useState(0);
 
-  const [shape] = useState<"circle" | "square">("circle");
+  const [paused, setPaused] = useState(false);
+  const previousPaused = useRef(false);
+
   const [radius, setRadius] = useState<"small" | "medium" | "large">("medium");
 
   const mouseDown = useRef(false);
@@ -78,12 +91,12 @@ export default function App() {
     const context = element.getContext("2d");
     if (!context) return;
 
-    const imageData = context.createImageData(size, size);
+    const imageData = context.createImageData(SIZE, SIZE);
     const { data } = imageData;
 
     // Fast pixel buffer fill
     let i = 0;
-    for (let j = 0; j < total; j++) {
+    for (let j = 0; j < TOTAL; j++) {
       data[i++] = board.current[j] ? 142 : 255; // R
       data[i++] = board.current[j] ? 140 : 255; // G
       data[i++] = board.current[j] ? 153 : 255; // B
@@ -102,7 +115,7 @@ export default function App() {
 
     const handleResize = () => {
       const multiplier =
-        (Math.min(window.innerWidth, window.innerHeight) / size) *
+        (Math.min(window.innerWidth, window.innerHeight) / SIZE) *
         devicePixelRatio;
 
       element.style.transform = `scale(${multiplier}) translate(-50%, -50%)`;
@@ -117,93 +130,106 @@ export default function App() {
   /**
    * Initialize EventSource connection to backend
    */
-  const initialize = useCallback(
-    (id: string) => {
+  const initialize = useCallback(() => {
+    eventSource.current?.close();
+
+    board.current = new Uint8Array(TOTAL).map(() => 0);
+
+    setTime(0);
+    setPopulation(0);
+
+    paint();
+
+    eventSource.current = new EventSource(
+      `${import.meta.env.VITE_BACKEND}/state`
+    );
+
+    eventSource.current.addEventListener("error", () => {
       eventSource.current?.close();
 
-      board.current = new Uint8Array(total).map(() => 0);
+      setRunning(false);
+      setLoading(false);
+      setToggling(false);
+      setPaused(false);
+    });
 
-      setTime(0);
-      setPopulation(0);
+    // Listen for state updates
+    eventSource.current.addEventListener("message", (event) => {
+      if (!board.current) return;
+
+      tick.current = false;
+
+      const data = JSON.parse(event.data) as {
+        step: number;
+        flipped: [number, number][] | null;
+        paused: boolean;
+      };
+
+      if (data.paused !== previousPaused.current) {
+        previousPaused.current = data.paused;
+        setPaused(data.paused);
+        setToggling(false);
+      }
+
+      if (!data.flipped) return;
+
+      setTime(data.step);
+
+      for (const [x, y] of data.flipped) {
+        const index = y * SIZE + x;
+        board.current[index] = board.current[index] ? 0 : 1;
+      }
+
+      setPopulation(board.current.reduce((a, b) => a + b, 0));
 
       paint();
+    });
 
-      eventSource.current = new EventSource(
-        import.meta.env.VITE_BACKEND + "/state/" + id
-      );
-
-      eventSource.current.addEventListener("error", () => {
-        eventSource.current?.close();
-
-        setId(null);
-        setLoading(false);
-      });
-
-      // Listen for state updates
-      eventSource.current.addEventListener("message", (event) => {
-        if (!board.current) return;
-
-        tick.current = false;
-
-        const data = JSON.parse(event.data) as {
-          step: number;
-          flipped: [number, number][] | null;
-        };
-
-        if (!data.flipped) return;
-
-        setTime(data.step);
-
-        for (const [x, y] of data.flipped) {
-          const index = y * size + x;
-          board.current[index] = board.current[index] ? 0 : 1;
-        }
-
-        setPopulation(board.current.reduce((a, b) => a + b, 0));
-
-        paint();
-      });
-
-      eventSource.current.addEventListener("open", () => {
-        setId(id);
-        setLoading(false);
-      });
-    },
-    [paint]
-  );
+    eventSource.current.addEventListener("open", () => {
+      setRunning(true);
+      setLoading(false);
+    });
+  }, [paint]);
 
   /**
    * Clean up on unmount
    */
   useEffect(() => {
+    initialize();
+
     return () => {
       eventSource.current?.close();
     };
   }, [initialize]);
 
+  const reset = useCallback(() => {
+    eventSource.current?.close();
+
+    board.current = new Uint8Array(TOTAL).map(() => 0);
+    paint();
+
+    setRunning(false);
+    setPaused(false);
+    setLoading(false);
+    setToggling(false);
+  }, [paint]);
+
+  const toggle = useCallback(async () => {
+    setToggling(true);
+    await toggleWorkflowStatus();
+  }, []);
+
   const start = useCallback(async () => {
-    console.log("start/stop clicked");
-
-    // End the current workflow (game)
-    if (id) {
-      eventSource.current?.close();
-
-      setId(null);
-
-      return;
-    }
-
     setLoading(true);
-
-    const workflowId = await startWorkflow();
-    initialize(workflowId);
-  }, [initialize, id]);
+    await startWorkflow();
+    initialize();
+  }, [initialize]);
 
   const handleMouseMove = useCallback(
     (event: MouseEvent) => {
       if (!mouseDown.current) return;
 
-      if (!canvas.current || !id) return;
+      if (!canvas.current) return;
 
       if (tick.current) return;
       tick.current = true;
@@ -212,21 +238,19 @@ export default function App() {
       const { clientX, clientY } = event;
 
       const multiplier =
-        (Math.min(window.innerWidth, window.innerHeight) / size) *
+        (Math.min(window.innerWidth, window.innerHeight) / SIZE) *
         devicePixelRatio;
 
       const x = Math.round((clientX - left) / multiplier);
       const y = Math.round((clientY - top) / multiplier);
 
       sendSplatter(
-        id,
         x,
         y,
-        radius === "small" ? 5 : radius === "medium" ? 10 : 20,
-        shape
+        radius === "small" ? 5 : radius === "medium" ? 10 : 20
       );
     },
-    [id, radius, shape]
+    [radius]
   );
 
   useEffect(() => {
@@ -256,8 +280,8 @@ export default function App() {
       <canvas
         className={styles.canvas}
         ref={canvas}
-        width={size}
-        height={size}
+        width={SIZE}
+        height={SIZE}
         onMouseDown={handleMouseDown}
       />
       <Flex
@@ -287,31 +311,41 @@ export default function App() {
       </Flex>
       <Flex position="fixed" top="4" left="4" gap="3" direction="column">
         <Flex gap="2" p="2" className={styles.panel} align="center">
-          <Button onClick={() => start()} loading={loading} disabled={loading}>
-            {id ? "Stop" : "Start"}
-            {id ? <PauseIcon /> : <PlayIcon />}
-          </Button>
-          {/* <Separator orientation="vertical" />
-          <Flex align="center" gap="3">
-            <Tooltip content="Shape">
-              <BorderSplitIcon />
-            </Tooltip>
-            <SegmentedControl.Root
-              disabled={!id}
-              value={shape}
-              onValueChange={(value) => setShape(value as "circle" | "square")}
+          {running ? (
+            <Flex align="center" gap="2">
+              {time < MAX_TIME && (
+                <Button
+                  onClick={() => toggle()}
+                  loading={toggling}
+                  disabled={toggling}
+                >
+                  {!paused && <PauseIcon />}
+                  {paused ? "Resume" : "Pause"}
+                  {paused && <PlayIcon />}
+                </Button>
+              )}
+              <Button color="gray" variant="soft" onClick={() => reset()}>
+                <SymbolIcon />
+                Reset
+              </Button>
+            </Flex>
+          ) : (
+            <Button
+              onClick={() => start()}
+              loading={loading}
+              disabled={loading}
             >
-              <SegmentedControl.Item value="circle">Circle</SegmentedControl.Item>
-              <SegmentedControl.Item value="square">Square</SegmentedControl.Item>
-            </SegmentedControl.Root>
-          </Flex> */}
+              Start
+              <PlayIcon />
+            </Button>
+          )}
           <Separator orientation="vertical" />
           <Flex align="center" gap="3" pl="1">
             <Text size="2" color="gray">
               Splatter size
             </Text>
             <SegmentedControl.Root
-              disabled={!id}
+              disabled={!running || time >= MAX_TIME}
               value={radius}
               onValueChange={(value) =>
                 setRadius(value as "small" | "medium" | "large")
@@ -328,7 +362,7 @@ export default function App() {
         <Text size="2" color="gray">
           <Flex align="center" gap="3" as="span">
             <InfoCircledIcon />
-            Click and drag on the canvas to splatter cells
+            You can click on the canvas to splatter cells
           </Flex>
         </Text>
       </Flex>

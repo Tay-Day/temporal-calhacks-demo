@@ -8,6 +8,14 @@ The game of life is composed of some very simple, deterministic rules
 3. Any live cell with more than three live neighbours dies, as if by overpopulation.
 4. Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
 
+Note: This is NOT a good use case for temporal
+
+The Goal of this excersize is to implement the Splatter method for the game of life where a user can click a square and a random amount of cells appear.
+
+1. Create a new selector branch within the main game loop.
+2. Implement the splatter activity for the splatter signal.
+
+
 ## Requirements
 
 - Download [go](https://go.dev/dl/). Follow the suggested instructions or use your packaege manager like below
@@ -63,3 +71,4 @@ The game of life is composed of some very simple, deterministic rules
   pnpm install
   pnpm run dev
   ```
+- If you opt to not use the frontend, Decrease the board size to 40 X 40 and print to the terminal

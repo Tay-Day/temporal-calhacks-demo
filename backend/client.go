@@ -135,14 +135,37 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
+	// Get the board from the workflow
+	stateChangeEnvelope, err := c.QueryWorkflow(ctx, GameOfLifeId, "", "board")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Decode the result into your StateChange struct
+	var stateChange gol.StateChange
+	if err := stateChangeEnvelope.Get(&stateChange); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	stateChangeJson, err := json.Marshal(stateChange)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	// Send the connection established event
-	_, err := fmt.Fprintf(w, "event: connection_established\n")
+	_, err = fmt.Fprintf(w, "event: connection_established\n")
 	if err != nil {
 		return
 	}
+	flusher.Flush()
+
+	// Send the initial state because on initial connection we need the full object.
+	fmt.Fprintf(w, "data: %s\n\n", stateChangeJson)
 	flusher.Flush()
 
 	for {
