@@ -18,11 +18,10 @@ const (
 )
 
 type GameOfLifeInput struct {
-	BoardRef  string
-	MaxSteps  int
-	TickTime  time.Duration
-	PrevSteps int
-	Paused    bool
+	MaxSteps         int
+	TickTime         time.Duration
+	UseExistingBoard bool
+	Paused           bool
 }
 
 const SplatterSignalName = "splatter"
@@ -37,10 +36,16 @@ const ToggleStatusSignal = "toggleStatus"
 
 // Main workflow function for the Game of Life
 func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
+	if input.MaxSteps == 0 {
+		input.MaxSteps = DefaultMaxSteps
+	}
+
+	lock := workflow.NewMutex(ctx, "game-of-life-lock")
 
 	// Initialize the game of life
 	state := Init(ctx, input)
 
+	// Serve the board as a full from nothing
 	workflow.SetQueryHandler(ctx, "board", func() (StateChange, error) {
 		return StateChangeFromNothing(state), nil
 	})
@@ -48,52 +53,36 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
 	splatterChannel := workflow.GetSignalChannel(ctx, SplatterSignalName)
 	selector := workflow.NewSelector(ctx)
-	activityCtx := workflow.WithActivityOptions(ctx, ao)
+
+	selector.AddReceive(toggleChannel, func(c workflow.ReceiveChannel, more bool) {
+		c.Receive(ctx, nil)
+		state.Paused = !state.Paused
+		NextGenerationTick(ctx, state).Get(ctx, nil)
+	})
+	selector.AddReceive(splatterChannel, func(c workflow.ReceiveChannel, more bool) {
+		var signal SplatterSignal
+		c.Receive(ctx, &signal)
+
+		err = DoActivity(ctx, AmInstance.Splatter, SplatterInput{
+			Row:    signal.X,
+			Col:    signal.Y,
+			Radius: signal.Size,
+		})
+		if err != nil {
+			log.Fatalf("Error splattering board: %v", err)
+		}
+		NextGenerationTick(ctx, state).Get(ctx, nil)
+	})
 
 	// Steps through the generations
-	for state.steps < state.MaxStep {
-
-		selector.AddReceive(toggleChannel, func(c workflow.ReceiveChannel, more bool) {
-			c.Receive(ctx, nil)
-			state.Paused = !state.Paused
-			err = state.SendStateUpdate(ctx, state)
-			if err != nil {
-				log.Fatalf("Error sending state update: %v", err)
-			}
-		})
-		selector.AddReceive(splatterChannel, func(c workflow.ReceiveChannel, more bool) {
-			var signal SplatterSignal
-			c.Receive(ctx, &signal)
-
-			prev := state
-			state.Board, err = DoActivity(ctx, AmInstance.Splatter, SplatterInput{
-				Board:  state.Board, // Passing around this board is expensive, Can we avoid this?
-				Row:    signal.X,
-				Col:    signal.Y,
-				Radius: signal.Size,
-			})
-			if err != nil {
-				log.Fatalf("Error splattering board: %v", err)
-			}
-			err = state.SendStateUpdate(ctx, prev)
-			if err != nil {
-				log.Fatalf("Error sending state update: %v", err)
-			}
-		})
+	for Steps < input.MaxSteps {
 
 		if !state.Paused {
-			prev := state
-			next := state
-			next.Board = NextGeneration(state.Board)
-			nextState := DiffState(prev, next)
-			future := workflow.ExecuteActivity(activityCtx, AmInstance.TickAndSendState, nextState)
+			future := NextGenerationTick(ctx, state)
 
 			// Set the state when this future is ready
 			selector.AddFuture(future, func(f workflow.Future) {
-				var result StateChange
-				f.Get(ctx, &result)
-				state.Board = next.Board
-				state.steps = nextState.Step
+				f.Get(ctx, nil)
 			})
 		}
 
@@ -103,17 +92,12 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		// Avoid large workflow histories
 		// This is the main reason this is not the best use case for temporal
 		// lots of IO to communicate each frame of the gol means long workflow histories.
-		if state.steps%DefaultStoreInterval == 0 {
-			ref, err := DoActivity(ctx, AmInstance.StoreBoard, state.Board)
-			if err != nil {
-				log.Fatalf("Error storing board: %v", err)
-				return err
-			}
+		if Steps%DefaultStoreInterval == 0 {
 			return workflow.NewContinueAsNewError(ctx, GameOfLife, GameOfLifeInput{
-				BoardRef:  ref,
-				MaxSteps:  input.MaxSteps,
-				TickTime:  state.TickTime,
-				PrevSteps: state.steps,
+				MaxSteps:         input.MaxSteps,
+				TickTime:         state.TickTime,
+				UseExistingBoard: true,
+				Paused:           state.Paused,
 			})
 		}
 	}
@@ -134,14 +118,16 @@ func Init(ctx workflow.Context, input GameOfLifeInput) GolState {
 		input.MaxSteps = DefaultMaxSteps
 	}
 
-	var err error
-	if input.BoardRef != "" {
-		// Set the board from the reference
-		GolBoard, err = DoActivity(ctx, AmInstance.GetBoard, input.BoardRef)
-		if err != nil {
-			return GolState{}
-		}
+	// Get a random board
+	board, err := DoActivityWithOutput(ctx, AmInstance.GetInitialBoard, GetInitialBoardInput{
+		Length:           DefaultBoardLength,
+		Width:            DefaultBoardWidth,
+		UseInMemoryBoard: input.UseExistingBoard,
+	})
+	if err != nil {
+		log.Fatalf("Error getting initial board: %v", err)
 	}
+	GolBoard = board
 
 	// Get the current workflows ID
 	workflowId := workflow.GetInfo(ctx).WorkflowExecution.ID
@@ -150,24 +136,7 @@ func Init(ctx workflow.Context, input GameOfLifeInput) GolState {
 		Id:       workflowId,
 		Paused:   input.Paused,
 		TickTime: input.TickTime,
-		steps:    input.PrevSteps,
 	}
-}
-
-// SendStateUpdate sends the difference between the previous and current state to the state stream
-func (g *GolState) SendStateUpdate(ctx workflow.Context, prevState GolState) error {
-
-	// Compute the flipped cells to avoid activity memory limits
-	stateChange := DiffState(prevState, *g)
-
-	// Send the state to the channel
-	_, err := DoActivity(ctx, AmInstance.TickAndSendState, SendStateInput{
-		State: stateChange,
-	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // Helper to print the board to the terminal (Only for debugging at LOW board sizes)
@@ -186,7 +155,7 @@ func PrintBoard(board [][]bool) {
 }
 
 // Helper to add the activity options to the context and execute the activity
-func DoActivity[Input any, Output any](ctx workflow.Context, activity func(context.Context, Input) (Output, error), input Input) (Output, error) {
+func DoActivityWithOutput[Input any, Output any](ctx workflow.Context, activity func(context.Context, Input) (Output, error), input Input) (Output, error) {
 	activityCtx := workflow.WithActivityOptions(ctx, ao)
 	var result Output
 	err := workflow.ExecuteActivity(activityCtx, activity, input).Get(activityCtx, &result)
@@ -194,6 +163,15 @@ func DoActivity[Input any, Output any](ctx workflow.Context, activity func(conte
 		return result, err
 	}
 	return result, nil
+}
+
+func DoActivity[Input any](ctx workflow.Context, activity func(context.Context, Input) error, input Input) error {
+	activityCtx := workflow.WithActivityOptions(ctx, ao)
+	err := workflow.ExecuteActivity(activityCtx, activity, input).Get(activityCtx, nil)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Any live cell with fewer than two live neighbours dies, as if by underpopulation.
@@ -246,10 +224,24 @@ func StateChangeFromNothing(from GolState) StateChange {
 	return StateChange{
 		Id:       from.Id,
 		Paused:   from.Paused,
-		Step:     from.steps,
+		Step:     Steps,
 		TickTime: from.TickTime,
 		Flipped:  DiffFlipped(board, GolBoard),
 	}
+}
+
+func NextGenerationTick(ctx workflow.Context, golState GolState) workflow.Future {
+	nextGeneration := NextGeneration(GolBoard)
+	flipped := DiffFlipped(GolBoard, nextGeneration)
+	GolBoard = nextGeneration
+
+	// Send the state change
+	activityCtx := workflow.WithActivityOptions(ctx, ao)
+	future := workflow.ExecuteActivity(activityCtx, AmInstance.TickAndSendState, TickAndSendStateInput{
+		GolState: golState,
+		Flipped:  flipped,
+	})
+	return future
 }
 
 func DiffFlipped(prev, curr Board) [][2]int {

@@ -2,31 +2,16 @@ package gol
 
 import (
 	"context"
-	"errors"
-	"log"
 	"math/rand"
-	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"go.temporal.io/sdk/workflow"
 )
 
 type Board [][]bool // true means alive, false means dead
 
 var GolBoard Board
-
-func init() {
-	// Get a random board
-	board, err := AmInstance.GetRandomBoard(context.Background(), GetRandomBoardInput{
-		Length: DefaultBoardLength,
-		Width:  DefaultBoardWidth,
-	})
-	if err != nil {
-		log.Fatalf("Error getting random board: %v", err)
-	}
-	GolBoard = board
-}
+var Steps int
 
 type StateChange struct {
 	Id       string        `json:"id"`
@@ -39,7 +24,6 @@ type StateChange struct {
 type GolState struct {
 	Id       string
 	Paused   bool
-	steps    int
 	TickTime time.Duration
 }
 
@@ -58,15 +42,59 @@ var ao = workflow.ActivityOptions{
 // splatter affects a single cell and its surrounding cells
 // randomly chooses spat zones and then randomly sets cells to true in the splat zone
 type SplatterInput struct {
-	Board  Board
 	Row    int
 	Col    int
 	Radius int
 }
 
-// TODO: Implement this
-func (a *Am) Splatter(ctx context.Context, input SplatterInput) (Board, error) {
-	return input.Board, nil
+func (a *Am) Splatter(ctx context.Context, input SplatterInput) error {
+	rows := len(GolBoard)
+	cols := len(GolBoard[0])
+	// Collect all cells within the circular radius
+	var candidates [][2]int
+	for i := -input.Radius; i <= input.Radius; i++ {
+		for j := -input.Radius; j <= input.Radius; j++ {
+			if i*i+j*j <= input.Radius*input.Radius {
+				r := input.Row + i
+				c := input.Col + j
+				if r >= 0 && r < rows && c >= 0 && c < cols {
+					candidates = append(candidates, [2]int{r, c})
+				}
+			}
+		}
+	}
+	// Randomly shuffle candidates
+	rand.Shuffle(len(candidates), func(i, j int) {
+		candidates[i], candidates[j] = candidates[j], candidates[i]
+	})
+	// Choose a random number of cells to fill
+	numToFill := rand.Intn(len(candidates)/2) + 1
+	for i := range numToFill {
+		r, c := candidates[i][0], candidates[i][1]
+		GolBoard[r][c] = true
+	}
+	// Ensure the center cell is always alive
+	GolBoard[input.Row][input.Col] = true
+	return nil
+}
+
+type GetInitialBoardInput struct {
+	Length           int
+	Width            int
+	UseInMemoryBoard bool
+}
+
+func (a *Am) GetInitialBoard(ctx context.Context, input GetInitialBoardInput) (board Board, err error) {
+	if GolBoard != nil || input.UseInMemoryBoard {
+		return GolBoard, nil
+	}
+
+	// Create a random board
+	return a.GetRandomBoard(ctx, GetRandomBoardInput{
+		Length: input.Length,
+		Width:  input.Width,
+	})
+
 }
 
 type GetRandomBoardInput struct {
@@ -119,24 +147,28 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 // Mimics a redis channel
 var StateStream chan StateChange
 
-// Mimics a database table useful across workflows
-var Boards = make(map[string]Board)
-var BoardsMu sync.RWMutex
+type TickAndSendStateInput struct {
+	GolState
+	Flipped [][2]int
+}
 
 // SendState sends the current state to the state stream
-func (a *Am) TickAndSendState(ctx context.Context, input GolState) (StateChange, error) {
-	// Wait for the tick
-	// Compute the next generation
-	nextGeneration := NextGeneration(GolBoard)
-	// Compute the state change
-	stateChange := DiffState(GolBoard, nextGeneration)
+func (a *Am) TickAndSendState(ctx context.Context, input TickAndSendStateInput) error {
+	Steps++
+	stateChange := StateChange{
+		Id:       input.Id,
+		Paused:   input.Paused,
+		Step:     Steps,
+		TickTime: input.TickTime,
+		Flipped:  input.Flipped,
+	}
 
 	// Send the state change
 	time.Sleep(input.TickTime)
-	return a.SendState(ctx, input)
+	return a.SendState(ctx, stateChange)
 }
 
-func (a *Am) SendState(ctx context.Context, state StateChange) (StateChange, error) {
+func (a *Am) SendState(ctx context.Context, state StateChange) error {
 	if StateStream == nil {
 		StateStream = make(chan StateChange, 5)
 	}
@@ -147,23 +179,5 @@ func (a *Am) SendState(ctx context.Context, state StateChange) (StateChange, err
 		// Drop if no listener
 	}
 
-	return state, nil
-}
-
-func (a *Am) StoreBoard(ctx context.Context, board Board) (ref string, err error) {
-	BoardsMu.Lock()
-	defer BoardsMu.Unlock()
-	ref = uuid.New().String()
-	Boards[ref] = board
-	return ref, nil
-}
-
-func (a *Am) GetBoard(ctx context.Context, ref string) (Board, error) {
-	BoardsMu.RLock()
-	defer BoardsMu.RUnlock()
-	board, ok := Boards[ref]
-	if !ok {
-		return Board{}, errors.New("board not found")
-	}
-	return board, nil
+	return nil
 }
