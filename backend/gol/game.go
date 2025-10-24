@@ -40,6 +40,10 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	// Initialize the game of life
 	state := Init(ctx, input)
 
+	workflow.SetQueryHandler(ctx, "board", func() (StateChange, error) {
+		return DiffState(state, state), nil
+	})
+
 	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
 	resumeCh := workflow.NewChannel(ctx)
 	workflow.Go(ctx, func(ctx workflow.Context) {
@@ -131,14 +135,7 @@ func (g *Gol) SendStateUpdate(ctx workflow.Context, prevState Gol) error {
 	g.steps++
 
 	// Compute the flipped cells to avoid activity memory limits
-	flipped := DiffFlipped(prevState.Board, g.Board)
-	stateChange := StateChange{
-		Id:       g.Id,
-		Paused:   g.Paused,
-		Step:     g.steps,
-		TickTime: g.TickTime,
-		Flipped:  flipped,
-	}
+	stateChange := DiffState(prevState, *g)
 
 	// Send the state to the channel
 	_, err := DoActivity(ctx, AmInstance.SendState, SendStateInput{

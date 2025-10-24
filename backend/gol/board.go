@@ -76,7 +76,18 @@ func countAliveNeighbors(board Board, i, j int) int {
 	return count
 }
 
-func DiffFlipped(prev, curr [][]bool) [][2]int {
+var emptyBoard = make(Board, DefaultBoardLength, DefaultBoardWidth)
+
+func DiffState(prev, curr Gol) StateChange {
+	return StateChange{
+		Id:       curr.Id,
+		Paused:   curr.Paused,
+		Step:     curr.steps,
+		TickTime: curr.TickTime,
+		Flipped:  DiffFlipped(prev.Board, curr.Board),
+	}
+}
+func DiffFlipped(prev, curr Board) [][2]int {
 	var flipped [][2]int
 	for i := range curr {
 		for j := range curr[i] {

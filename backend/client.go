@@ -145,6 +145,20 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
+	// Get the board from the workflow
+	stateChange, err := c.QueryWorkflow(r.Context(), GameOfLifeId, "", "board")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	stateChangeJson, err := json.Marshal(stateChange)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Fprintf(w, "data: %s\n\n", stateChangeJson)
+	flusher.Flush()
+
 	for {
 		select {
 		case <-ctx.Done():
