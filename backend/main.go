@@ -33,7 +33,7 @@ func main() {
 
 func handleEndpoints(temporalClient TemporalClientInterface, mux *http.ServeMux) {
 	mux.HandleFunc("/start", WrapHandler(temporalClient.StartGameOfLife))
-	mux.HandleFunc("/state/", WrapHandler(temporalClient.GetState))
+	mux.HandleFunc("/state", WrapHandler(temporalClient.GetState))
 	mux.HandleFunc("/signal/", WrapHandler(temporalClient.SendSignal))
 	http.ListenAndServe(":8080", mux)
 }
