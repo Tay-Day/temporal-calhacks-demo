@@ -25,6 +25,7 @@ type GameOfLifeInput struct {
 	Paused    bool
 }
 
+// TODO: Implement this
 const SplatterSignalName = "splatter"
 
 type SplatterSignal struct {
@@ -46,13 +47,13 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	})
 
 	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
-	splatterChannel := workflow.GetSignalChannel(ctx, SplatterSignalName)
 	selector := workflow.NewSelector(ctx)
 	activityCtx := workflow.WithActivityOptions(ctx, ao)
 
 	// Steps through the generations
 	for state.steps < state.MaxStep {
 
+		// Handle the toggle status signal
 		selector.AddReceive(toggleChannel, func(c workflow.ReceiveChannel, more bool) {
 			c.Receive(ctx, nil)
 			state.Paused = !state.Paused
@@ -61,42 +62,20 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 				log.Fatalf("Error sending state update: %v", err)
 			}
 		})
-		selector.AddReceive(splatterChannel, func(c workflow.ReceiveChannel, more bool) {
-			var signal SplatterSignal
-			c.Receive(ctx, &signal)
-
-			prev := state
-			state.Board, err = DoActivity(ctx, AmInstance.Splatter, SplatterInput{
-				Board:  state.Board, // Passing around this board is expensive, Can we avoid this?
-				Row:    signal.X,
-				Col:    signal.Y,
-				Radius: signal.Size,
-			})
-			if err != nil {
-				log.Fatalf("Error splattering board: %v", err)
-			}
-			err = state.SendStateUpdate(ctx, prev)
-			if err != nil {
-				log.Fatalf("Error sending state update: %v", err)
-			}
-		})
 
 		if !state.Paused {
 			prev := state
-			nextBoard := NextGeneration(state.Board)
-			next := DiffState(prev, state)
-			next.Step += 1
-			future := workflow.ExecuteActivity(activityCtx, AmInstance.TickAndSendState, SendStateInput{
-				State: next,
-			})
+			next := state
+			next.Board = NextGeneration(state.Board)
+			nextState := DiffState(prev, next)
+			future := workflow.ExecuteActivity(activityCtx, AmInstance.TickAndSendState, nextState)
+
+			// Set the state when this future is ready
 			selector.AddFuture(future, func(f workflow.Future) {
 				var result StateChange
 				f.Get(ctx, &result)
-				if result.Step != next.Step {
-					log.Fatalf("Step mismatch: %d != %d", result.Step, next.Step)
-				}
-				state.Board = nextBoard
-				state.steps = next.Step
+				state.Board = next.Board
+				state.steps = nextState.Step
 			})
 		}
 
@@ -174,9 +153,7 @@ func (g *Gol) SendStateUpdate(ctx workflow.Context, prevState Gol) error {
 	stateChange := DiffState(prevState, *g)
 
 	// Send the state to the channel
-	_, err := DoActivity(ctx, AmInstance.TickAndSendState, SendStateInput{
-		State: stateChange,
-	})
+	_, err := DoActivity(ctx, AmInstance.SendState, stateChange)
 	if err != nil {
 		return err
 	}

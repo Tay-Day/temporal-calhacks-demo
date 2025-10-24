@@ -51,40 +51,8 @@ type SplatterInput struct {
 	Radius int
 }
 
+// TODO: Implement this
 func (a *Am) Splatter(ctx context.Context, input SplatterInput) (Board, error) {
-	rows := len(input.Board)
-	cols := len(input.Board[0])
-
-	// Collect all cells within the circular radius
-	var candidates [][2]int
-	for i := -input.Radius; i <= input.Radius; i++ {
-		for j := -input.Radius; j <= input.Radius; j++ {
-			if i*i+j*j <= input.Radius*input.Radius {
-				r := input.Row + i
-				c := input.Col + j
-				if r >= 0 && r < rows && c >= 0 && c < cols {
-					candidates = append(candidates, [2]int{r, c})
-				}
-			}
-		}
-	}
-
-	// Randomly shuffle candidates
-	rand.Shuffle(len(candidates), func(i, j int) {
-		candidates[i], candidates[j] = candidates[j], candidates[i]
-	})
-
-	// Choose a random number of cells to fill
-	numToFill := rand.Intn(len(candidates)/2) + 1
-
-	for i := range numToFill {
-		r, c := candidates[i][0], candidates[i][1]
-		input.Board[r][c] = true
-	}
-
-	// Ensure the center cell is always alive
-	input.Board[input.Row][input.Col] = true
-
 	return input.Board, nil
 }
 
@@ -142,27 +110,26 @@ var StateStream chan StateChange
 var Boards = make(map[string]Board)
 var BoardsMu sync.RWMutex
 
-type SendStateInput struct {
-	State StateChange
+// SendState sends the current state to the state stream
+func (a *Am) TickAndSendState(ctx context.Context, input StateChange) (StateChange, error) {
+	// Wait for the tick
+	input.Step += 1
+	time.Sleep(input.TickTime)
+	return a.SendState(ctx, input)
 }
 
-// SendState sends the current state to the state stream
-func (a *Am) TickAndSendState(ctx context.Context, input SendStateInput) (StateChange, error) {
-
-	time.Sleep(input.State.TickTime)
-
-	// Wait for the tick
+func (a *Am) SendState(ctx context.Context, state StateChange) (StateChange, error) {
 	if StateStream == nil {
 		StateStream = make(chan StateChange, 5)
 	}
 
 	select {
-	case StateStream <- input.State:
+	case StateStream <- state:
 	default:
 		// Drop if no listener
 	}
 
-	return input.State, nil
+	return state, nil
 }
 
 func (a *Am) StoreBoard(ctx context.Context, board Board) (ref string, err error) {
