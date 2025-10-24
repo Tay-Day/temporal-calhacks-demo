@@ -2,6 +2,7 @@ package main
 
 import (
 	"backend/gol"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,10 +11,13 @@ import (
 	"time"
 
 	"go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"go.uber.org/zap"
 )
+
+var GameOfLifeId = "gol"
 
 type TemporalClientInterface interface {
 	Close() error
@@ -49,6 +53,20 @@ func NewTemporalClient(hostPort string, taskQueue string) (TemporalClientInterfa
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Populate the state streams map with a channel for each workflow Id currently running
+	workflows, err := temporalClient.ListWorkflow(context.Background(), &workflowservice.ListWorkflowExecutionsRequest{
+		Query: "WorkflowType = 'GameOfLife' AND ExecutionStatus = 'Running'",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(workflows.Executions) > 0 {
+		gol.StateStream = make(chan gol.StateChange)
+	} else {
+		gol.StateStream = nil
 	}
 
 	return &TemporalClient{
@@ -98,19 +116,8 @@ func (c *TemporalClient) RunWorker() error {
 // GetState subscribes to the state stream and sends the state to the client via SSE
 func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 2 {
-		http.Error(w, "missing workflow ID in path", http.StatusBadRequest)
-		return
-	}
-	workflowID := parts[1]
-
-	// Subscribe to the state stream
-	gol.StateStreamsMu.RLock()
-	stateStream, ok := gol.StateStreams[workflowID]
-	gol.StateStreamsMu.RUnlock()
-	if !ok {
-		http.Error(w, fmt.Sprintf("state stream not found for ID: %s", workflowID), http.StatusNotFound)
+	if gol.StateStream == nil {
+		http.Error(w, "State stream not initialized", http.StatusNotFound)
 		return
 	}
 
@@ -150,7 +157,7 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 			}
 			flusher.Flush()
 
-		case state := <-stateStream:
+		case state := <-gol.StateStream:
 
 			json, err := json.Marshal(state)
 			if err != nil {
@@ -166,21 +173,20 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 }
 
 // SendSignal sends a signal to the workflow
-// Url is like /signal/workflowID/signalName
+// Url is like /signal/:signalName with the payload being the signal payload
 func (c *TemporalClient) SendSignal(w http.ResponseWriter, r *http.Request) {
 
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 3 {
-		http.Error(w, "missing workflow Id or event name in path", http.StatusBadRequest)
+	if len(parts) < 2 {
+		http.Error(w, "missing signal name in path", http.StatusBadRequest)
 		return
 	}
-	workflowID := parts[1]
-	signalName := parts[2]
+	signalName := parts[1]
 
 	var payload map[string]any
 	json.NewDecoder(r.Body).Decode(&payload)
 
-	c.SignalWorkflow(r.Context(), workflowID, "", signalName, payload)
+	c.SignalWorkflow(r.Context(), GameOfLifeId, "", signalName, payload)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Event sent"))
@@ -189,10 +195,8 @@ func (c *TemporalClient) SendSignal(w http.ResponseWriter, r *http.Request) {
 // StartGameOfLife starts a new game of life workflow
 func (c *TemporalClient) StartGameOfLife(w http.ResponseWriter, r *http.Request) {
 
-	workflowID := "gol" // Deterministic to delete other games (one at a time)
-
 	options := client.StartWorkflowOptions{
-		ID:                    workflowID,
+		ID:                    GameOfLifeId,
 		TaskQueue:             c.taskQueue,
 		WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
 	}
@@ -213,13 +217,10 @@ func (c *TemporalClient) StartGameOfLife(w http.ResponseWriter, r *http.Request)
 			http.Error(w, "state stream not initialized in time", http.StatusInternalServerError)
 			return
 		case <-ticker.C:
-			gol.StateStreamsMu.RLock()
-			_, ok := gol.StateStreams[workflowID]
-			gol.StateStreamsMu.RUnlock()
+			_, ok := <-gol.StateStream
 			if ok {
-				// Stream initialized, return workflow ID
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(workflowID))
+				w.Write([]byte("Stream initialized"))
 				return
 			}
 		}

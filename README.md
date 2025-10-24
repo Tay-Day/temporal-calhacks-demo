@@ -1,6 +1,12 @@
 # Conversion CalHacks Demo - EternalGameOfLife 
 
-This is a tutorial for using temporals signal system to implement the splatter functionality in the 
+This is a tutorial for using temporals signal system to coordinate an event driven UI in a durable long lived game of life.
+
+The game of life is composed of some very simple, deterministic rules
+1. Any live cell with fewer than two live neighbours dies, as if by underpopulation.
+2. Any live cell with two or three live neighbours lives on to the next generation.
+3. Any live cell with more than three live neighbours dies, as if by overpopulation.
+4. Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
 
 ## Requirements
 

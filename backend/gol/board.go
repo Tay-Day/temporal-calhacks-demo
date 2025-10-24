@@ -140,8 +140,7 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 /* ------------------------------ IO Activites ------------------------------ */
 
 // Mimics a redis channel
-var StateStreams = make(map[string]chan StateChange)
-var StateStreamsMu sync.RWMutex
+var StateStream chan StateChange
 
 // Mimics a database table useful across workflows
 var Boards = make(map[string]Board)
@@ -156,16 +155,12 @@ type SendStateInput struct {
 func (a *Am) SendState(ctx context.Context, input SendStateInput) (StateChange, error) {
 	time.Sleep(input.TickTime)
 
-	StateStreamsMu.Lock()
-	defer StateStreamsMu.Unlock()
-
-	_, ok := StateStreams[input.State.Id]
-	if !ok {
-		StateStreams[input.State.Id] = make(chan StateChange)
+	if StateStream == nil {
+		StateStream = make(chan StateChange)
 	}
 
 	select {
-	case StateStreams[input.State.Id] <- input.State:
+	case StateStream <- input.State:
 	default:
 		// Drop update if no listener ready
 	}
