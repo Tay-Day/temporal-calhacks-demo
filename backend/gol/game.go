@@ -11,7 +11,7 @@ import (
 
 const (
 	DefaultMaxSteps      = 5000
-	DefaultTickTime      = 50 * time.Millisecond
+	DefaultTickTime      = 250 * time.Millisecond
 	DefaultBoardLength   = 512
 	DefaultBoardWidth    = 512
 	DefaultStoreInterval = 150
