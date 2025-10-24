@@ -47,7 +47,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			toggleChannel.Receive(ctx, nil)
 			state.Paused = !state.Paused
 
-			if state.Paused {
+			if !state.Paused {
 				resumeCh.Send(ctx, nil)
 			}
 		}
@@ -99,7 +99,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			return err
 		}
 
-		// Avoid large workflow histories by continuing as new every 250 steps
+		// Avoid large workflow histories
 		if state.Steps%DefaultStoreInterval == 0 {
 			ref, err := DoActivity(ctx, AmInstance.StoreBoard, state.Board)
 			if err != nil {
