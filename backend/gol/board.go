@@ -98,26 +98,6 @@ var ao = workflow.ActivityOptions{
 	StartToCloseTimeout: 10 * time.Second,
 }
 
-type RandomSplatterInput struct {
-	Board  Board
-	Radius int
-}
-
-// RandomSplatter randomly splatts a board with a given splatter radius and number of splats
-func (a *Am) RandomSplatter(ctx context.Context, input RandomSplatterInput) (Board, error) {
-
-	// Pick a random cell to splatter
-	row := rand.Intn(len(input.Board))
-	col := rand.Intn(len(input.Board[0]))
-
-	return a.Splatter(ctx, SplatterInput{
-		Board:  input.Board,
-		Row:    row,
-		Col:    col,
-		Radius: input.Radius,
-	})
-}
-
 // splatter affects a single cell and its surrounding cells
 // randomly chooses spat zones and then randomly sets cells to true in the splat zone
 type SplatterInput struct {
