@@ -158,7 +158,7 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 	defer ticker.Stop()
 
 	// Send the connection established event
-	_, err = fmt.Fprintf(w, "event: connection_established\n")
+	_, err = fmt.Fprintf(w, "event: connection_established\n\n")
 	if err != nil {
 		return
 	}
