@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	DefaultMaxSteps      = 1000
+	DefaultMaxSteps      = 5000
 	DefaultTickTime      = 250 * time.Millisecond
 	DefaultBoardLength   = 512
 	DefaultBoardWidth    = 512
