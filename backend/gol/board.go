@@ -13,6 +13,7 @@ import (
 
 type StateChange struct {
 	Id       string        `json:"id"`
+	Paused   bool          `json:"paused"`
 	Step     int           `json:"step"`
 	TickTime time.Duration `json:"tickTime"`
 	Flipped  [][2]int      `json:"flipped"` // slice of [row, col] pairs
@@ -22,6 +23,7 @@ type Board [][]bool // true means alive, false means dead
 
 type Gol struct {
 	Id       string
+	Paused   bool
 	Board    Board
 	Steps    int
 	MaxStep  int

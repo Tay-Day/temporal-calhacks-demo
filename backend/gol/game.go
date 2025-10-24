@@ -21,6 +21,7 @@ type GameOfLifeInput struct {
 	MaxSteps  int
 	TickTime  time.Duration
 	PrevSteps int
+	Paused    bool
 }
 
 const SplatterSignalName = "splatter"
@@ -31,14 +32,34 @@ type SplatterSignal struct {
 	Size int `json:"size"`
 }
 
+const ToggleStatusSignal = "toggleStatus"
+
 // Main workflow function for the Game of Life
 func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 
 	// Initialize the game of life
 	state := Init(ctx, input)
 
+	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
+	resumeCh := workflow.NewChannel(ctx)
+	workflow.Go(ctx, func(ctx workflow.Context) {
+		for {
+			toggleChannel.Receive(ctx, nil)
+			state.Paused = !state.Paused
+
+			if state.Paused {
+				resumeCh.Send(ctx, nil)
+			}
+		}
+	})
+
 	// Steps through the generations
 	for state.Steps < state.MaxStep {
+
+		// Block until resumed
+		if state.Paused {
+			resumeCh.Receive(ctx, nil) // Block until resumed
+		}
 
 		// Compute next generation
 		previousState := state
@@ -65,6 +86,9 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		}
 	}
 
+	// Cleanup the state stream (no more game or updates)
+	StateStream = nil
+
 	return nil
 }
 
@@ -79,6 +103,7 @@ func SendStateUpdate(ctx workflow.Context, prevState, currState Gol) error {
 	flipped := DiffFlipped(prevState.Board, currState.Board)
 	stateChange := StateChange{
 		Id:       currState.Id,
+		Paused:   currState.Paused,
 		Step:     currState.Steps,
 		TickTime: currState.TickTime,
 		Flipped:  flipped,
@@ -125,6 +150,7 @@ func Init(ctx workflow.Context, input GameOfLifeInput) Gol {
 		Id:       workflowId,
 		Board:    start,
 		MaxStep:  input.MaxSteps,
+		Paused:   input.Paused,
 		TickTime: input.TickTime,
 		Steps:    input.PrevSteps + 1,
 	}

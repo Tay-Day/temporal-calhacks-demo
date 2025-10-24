@@ -8,6 +8,8 @@ The game of life is composed of some very simple, deterministic rules
 3. Any live cell with more than three live neighbours dies, as if by overpopulation.
 4. Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
 
+Lets say it is imperative that this game can never die, it is imperative
+
 ## Requirements
 
 - Download [go](https://go.dev/dl/). Follow the suggested instructions or use your packaege manager like below
