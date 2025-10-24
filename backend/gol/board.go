@@ -85,7 +85,7 @@ type GetInitialBoardInput struct {
 }
 
 func (a *Am) GetInitialBoard(ctx context.Context, input GetInitialBoardInput) (board Board, err error) {
-	if GolBoard != nil || input.UseInMemoryBoard {
+	if GolBoard != nil && input.UseInMemoryBoard {
 		return GolBoard, nil
 	}
 
@@ -147,28 +147,14 @@ func (a *Am) GetRandomBoard(ctx context.Context, input GetRandomBoardInput) (boa
 // Mimics a redis channel
 var StateStream chan StateChange
 
-type TickAndSendStateInput struct {
-	GolState
-	Flipped [][2]int
-}
-
-// SendState sends the current state to the state stream
-func (a *Am) TickAndSendState(ctx context.Context, input TickAndSendStateInput) error {
+func (a *Am) Tick(ctx context.Context, duration time.Duration) error {
+	time.Sleep(duration)
 	Steps++
-	stateChange := StateChange{
-		Id:       input.Id,
-		Paused:   input.Paused,
-		Step:     Steps,
-		TickTime: input.TickTime,
-		Flipped:  input.Flipped,
-	}
-
-	// Send the state change
-	time.Sleep(input.TickTime)
-	return a.SendState(ctx, stateChange)
+	return nil
 }
 
 func (a *Am) SendState(ctx context.Context, state StateChange) error {
+
 	if StateStream == nil {
 		StateStream = make(chan StateChange, 5)
 	}
@@ -178,6 +164,5 @@ func (a *Am) SendState(ctx context.Context, state StateChange) error {
 	default:
 		// Drop if no listener
 	}
-
 	return nil
 }
