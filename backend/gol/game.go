@@ -50,6 +50,7 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	})
 
 	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
+	splatterChannel := workflow.GetSignalChannel(ctx, SplatterSignalName)
 	selector := workflow.NewSelector(ctx)
 
 	selector.AddReceive(toggleChannel, func(c workflow.ReceiveChannel, more bool) {
@@ -60,6 +61,24 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 			log.Fatalf("Error next generation and sending state: %v", err)
 		}
 	})
+	selector.AddReceive(splatterChannel, func(c workflow.ReceiveChannel, more bool) {
+		var signal SplatterSignal
+		c.Receive(ctx, &signal)
+
+		err = DoActivity(ctx, AmInstance.Splatter, SplatterInput{
+			Row:    signal.X,
+			Col:    signal.Y,
+			Radius: signal.Size,
+		})
+		if err != nil {
+			log.Fatalf("Error splattering board: %v", err)
+		}
+		NextGenerationAndSendState(ctx, state)
+		if err != nil {
+			log.Fatalf("Error next generation and sending state: %v", err)
+		}
+	})
+
 	// Steps through the generations
 	for Steps < input.MaxSteps {
 
