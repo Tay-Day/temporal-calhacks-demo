@@ -1,22 +1,24 @@
-![Game of Life](./thumbnail.png)
+![Screenshot](./thumbnail.png)
 
 # Conversion CalHacks Demo - EternalGameOfLife
 
-This is a tutorial for using temporals signal system to coordinate an event driven UI in a durable long lived game of life.
+A tutorial for using signals in [Temporal](https://docs.temporal.io/evaluate/why-temporal) to coordinate an event-driven UI for a durable, long-lived [game of life](https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life).
 
-The game of life is composed of some very simple, deterministic rules
+The game of life is composed of some very simple, deterministic rules:
 
 1. Any live cell with fewer than two live neighbours dies, as if by underpopulation.
 2. Any live cell with two or three live neighbours lives on to the next generation.
 3. Any live cell with more than three live neighbours dies, as if by overpopulation.
 4. Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
 
-Note: This is NOT a good use case for temporal
+> [!WARNING]
+> This is NOT a good production use case for Temporal. We are simply exploring how Temporal can be used for durable, long-running jobs!
 
-The Goal of this excersize is to implement the Splatter method for the game of life where a user can click a square and a random amount of cells appear.
+## Goals
+Implement the `splatter` method for the game of life, which allows a visitor to click and make a random amount of cells appear.
 
-1. Create a new selector branch within the main game loop.
-2. Implement the splatter activity for the splatter signal.
+1. Create a new selector branch within the main game loop
+2. Implement the splatter activity for the splatter signal
 
 ## Requirements
 
