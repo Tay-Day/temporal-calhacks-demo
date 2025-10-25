@@ -81,44 +81,22 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		return StateChangeFromNothing(state), nil
 	})
 
-	// Setup the signal channels and selector
-	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
-	splatterChannel := workflow.GetSignalChannel(ctx, SplatterSignalName)
+	// Setup the selector for concurrent future execution
 	selector := workflow.NewSelector(ctx)
-
-	// Add the receive handlers for the pause channel
-	selector.AddReceive(toggleChannel, func(c workflow.ReceiveChannel, more bool) {
-		c.Receive(ctx, nil)
-		state.Paused = !state.Paused
-	})
-
-	// Add the receive handler for the splatter signal
-	selector.AddReceive(splatterChannel, func(c workflow.ReceiveChannel, more bool) {
-		var signal SplatterSignal
-		c.Receive(ctx, &signal)
-
-		err = DoActivity(ctx, AmInstance.Splatter, SplatterInput{
-			Row:    signal.X,
-			Col:    signal.Y,
-			Radius: signal.Size,
-		})
-		if err != nil {
-			log.Fatalf("Error splattering board: %v", err)
-		}
-	})
 
 	// Steps through the generations
 	for Steps < input.MaxSteps {
 
 		if !state.Paused {
 			Steps++
-			// Set the state when this future is ready
+
+			// Add a timer tick to the selector
 			selector.AddFuture(workflow.NewTimer(ctx, state.TickTime), func(f workflow.Future) {
 				f.Get(ctx, nil)
 			})
 		}
 
-		// Will block until a future is ready
+		// Will block until a future is ready (timer or other future)
 		selector.Select(ctx)
 
 		// Next generation and send state
