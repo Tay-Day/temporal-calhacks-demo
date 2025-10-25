@@ -48,33 +48,6 @@ type SplatterInput struct {
 }
 
 func (a *Am) Splatter(ctx context.Context, input SplatterInput) error {
-	rows := len(GolBoard)
-	cols := len(GolBoard[0])
-	// Collect all cells within the circular radius
-	var candidates [][2]int
-	for i := -input.Radius; i <= input.Radius; i++ {
-		for j := -input.Radius; j <= input.Radius; j++ {
-			if i*i+j*j <= input.Radius*input.Radius {
-				r := input.Row + i
-				c := input.Col + j
-				if r >= 0 && r < rows && c >= 0 && c < cols {
-					candidates = append(candidates, [2]int{r, c})
-				}
-			}
-		}
-	}
-	// Randomly shuffle candidates
-	rand.Shuffle(len(candidates), func(i, j int) {
-		candidates[i], candidates[j] = candidates[j], candidates[i]
-	})
-	// Choose a random number of cells to fill
-	numToFill := rand.Intn(len(candidates)/2) + 1
-	for i := range numToFill {
-		r, c := candidates[i][0], candidates[i][1]
-		GolBoard[r][c] = true
-	}
-	// Ensure the center cell is always alive
-	GolBoard[input.Row][input.Col] = true
 	return nil
 }
 

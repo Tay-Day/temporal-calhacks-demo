@@ -50,7 +50,6 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	})
 
 	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
-	splatterChannel := workflow.GetSignalChannel(ctx, SplatterSignalName)
 	selector := workflow.NewSelector(ctx)
 
 	selector.AddReceive(toggleChannel, func(c workflow.ReceiveChannel, more bool) {
