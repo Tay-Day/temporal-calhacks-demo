@@ -158,7 +158,7 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 	defer ticker.Stop()
 
 	// Send the connection established event
-	_, err = fmt.Fprintf(w, "event: connection_established\n")
+	_, err = fmt.Fprintf(w, "event: connection_established\n\n")
 	if err != nil {
 		return
 	}
@@ -171,7 +171,6 @@ func (c *TemporalClient) GetState(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Context done")
 			return
 		case <-ticker.C:
 			_, err := fmt.Fprintf(w, "event: ping\n\n")

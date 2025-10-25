@@ -50,14 +50,24 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	})
 
 	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
+	splatterChannel := workflow.GetSignalChannel(ctx, SplatterSignalName)
 	selector := workflow.NewSelector(ctx)
 
 	selector.AddReceive(toggleChannel, func(c workflow.ReceiveChannel, more bool) {
 		c.Receive(ctx, nil)
 		state.Paused = !state.Paused
-		NextGenerationAndSendState(ctx, state)
+	})
+	selector.AddReceive(splatterChannel, func(c workflow.ReceiveChannel, more bool) {
+		var signal SplatterSignal
+		c.Receive(ctx, &signal)
+
+		err = DoActivity(ctx, AmInstance.Splatter, SplatterInput{
+			Row:    signal.X,
+			Col:    signal.Y,
+			Radius: signal.Size,
+		})
 		if err != nil {
-			log.Fatalf("Error next generation and sending state: %v", err)
+			log.Fatalf("Error splattering board: %v", err)
 		}
 	})
 
@@ -65,18 +75,21 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 	for Steps < input.MaxSteps {
 
 		if !state.Paused {
+			Steps++
 			// Set the state when this future is ready
-			selector.AddFuture(Tick(ctx, state), func(f workflow.Future) {
+			selector.AddFuture(workflow.NewTimer(ctx, state.TickTime), func(f workflow.Future) {
 				f.Get(ctx, nil)
-				NextGenerationAndSendState(ctx, state)
-				if err != nil {
-					log.Fatalf("Error next generation and sending state: %v", err)
-				}
 			})
 		}
 
 		// Will block until a future is ready
 		selector.Select(ctx)
+
+		// Next generation and send state
+		err = NextGenerationAndSendState(ctx, state)
+		if err != nil {
+			log.Fatalf("Error next generation and sending state: %v", err)
+		}
 
 		// Avoid large workflow histories
 		// This is the main reason this is not the best use case for temporal
