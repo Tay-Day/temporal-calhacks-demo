@@ -9,6 +9,12 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+/* -------------------------------------------------------------------------- */
+/*                            Eternal Game Of life                            */
+/* -------------------------------------------------------------------------- */
+
+// This is the Workflow code for the Eternal Game of Life, ALL code in this file is deterministic
+
 const (
 	DefaultMaxSteps      = 5000
 	DefaultTickTime      = 250 * time.Millisecond
@@ -17,6 +23,32 @@ const (
 	DefaultStoreInterval = 50
 )
 
+// true means alive, false means dead
+type Board [][]bool
+
+// In memory board
+var GolBoard Board
+
+// Global step counter
+var Steps int
+
+// State change object
+type StateChange struct {
+	Id       string        `json:"id"`
+	Paused   bool          `json:"paused"`
+	Step     int           `json:"step"`
+	TickTime time.Duration `json:"tickTime"`
+	Flipped  [][2]int      `json:"flipped"` // slice of [row, col] pairs
+}
+
+// Game state object (managed by the signal handlers)
+type GolState struct {
+	Id       string
+	Paused   bool
+	TickTime time.Duration
+}
+
+// Iniitial configuration object for the workflow
 type GameOfLifeInput struct {
 	MaxSteps         int
 	TickTime         time.Duration
@@ -24,7 +56,7 @@ type GameOfLifeInput struct {
 	Paused           bool
 }
 
-// TODO: Implement this
+// TODO: Implement Signal handling
 const SplatterSignalName = "splatter"
 
 type SplatterSignal struct {
@@ -49,14 +81,18 @@ func GameOfLife(ctx workflow.Context, input GameOfLifeInput) (err error) {
 		return StateChangeFromNothing(state), nil
 	})
 
+	// Setup the signal channels and selector
 	toggleChannel := workflow.GetSignalChannel(ctx, ToggleStatusSignal)
 	splatterChannel := workflow.GetSignalChannel(ctx, SplatterSignalName)
 	selector := workflow.NewSelector(ctx)
 
+	// Add the receive handlers for the pause channel
 	selector.AddReceive(toggleChannel, func(c workflow.ReceiveChannel, more bool) {
 		c.Receive(ctx, nil)
 		state.Paused = !state.Paused
 	})
+
+	// Add the receive handler for the splatter signal
 	selector.AddReceive(splatterChannel, func(c workflow.ReceiveChannel, more bool) {
 		var signal SplatterSignal
 		c.Receive(ctx, &signal)
