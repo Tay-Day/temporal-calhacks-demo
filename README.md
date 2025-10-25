@@ -15,10 +15,12 @@ The game of life is composed of some very simple, deterministic rules:
 > This is NOT a good production use case for Temporal. We are simply exploring how Temporal can be used for durable, long-running jobs!
 
 ## Goals
-Implement the `splatter` method for the game of life, which allows a visitor to click and make a random amount of cells appear.
+Implement the `splatter` method, which allows a visitor to click and make a random amount of cells appear.
+Implement the `toggle` signal, allowing the user to pause and unpase.
 
-1. Create a new selector branch within the main game loop
-2. Implement the splatter activity for the splatter signal
+1. Create new selector callbacks on the main selector for each signal (splatter and toggle)
+2. Implement the splatter activity for the splatter signal to your liking
+3. Test durability (nuke the backend + refresh the frontend)
 
 ## Requirements
 
